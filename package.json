@@ -1,0 +1,17 @@
+{
+  "name": "overseer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "check": "bunx biome check . && bun --check src/main.ts",
+    "format": "bunx biome format --write .",
+    "lint": "bunx biome lint ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "bun-types": "latest"
+  }
+}

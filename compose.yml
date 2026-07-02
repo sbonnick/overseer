@@ -1,0 +1,30 @@
+services:
+  traefik:
+    image: traefik:v3.2
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entryPoints.web.address=:80"
+      - "--api.insecure=true"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+
+  overseer:
+    image: ghcr.io/stewartb/overseer:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PORT=8080
+      - POLL_INTERVAL_MS=10000
+      - UPDATE_CHECK_INTERVAL_MS=86400000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.overseer.rule=Host(`overseer.localhost`)"
+      - "traefik.http.routers.overseer.port=8080"
