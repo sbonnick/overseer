@@ -1,6 +1,7 @@
 import { loadConfig } from "./config.ts";
 import { discoverProjects } from "./discovery.ts";
 import { DockerClient } from "./docker.ts";
+import { discoverTraefikApiRoutes } from "./traefik.ts";
 import { page } from "./ui.ts";
 import { UpdateChecker } from "./updates.ts";
 
@@ -33,7 +34,8 @@ export function startServer(): void {
       if (url.pathname === "/api/projects") {
         try {
           const containers = await docker.listContainers();
-          const projects = discoverProjects(containers, config.projectFilter);
+          const traefikRoutes = await discoverTraefikApiRoutes(containers);
+          const projects = discoverProjects(containers, config.projectFilter, traefikRoutes);
           for (const project of projects) {
             for (const service of project.services) {
               service.update = updates.getStatus(service.image);

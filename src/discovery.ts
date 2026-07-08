@@ -30,6 +30,8 @@ export type ServiceInfo = {
   update?: UpdateInfo;
 };
 
+export type RouteInfoByContainer = Map<string, RouteInfo[]>;
+
 export type ProjectInfo = {
   name: string;
   workingDir?: string;
@@ -43,6 +45,7 @@ export type ProjectInfo = {
 export function discoverProjects(
   containers: DockerContainer[],
   projectFilter?: string,
+  apiRoutes: RouteInfoByContainer = new Map(),
 ): ProjectInfo[] {
   const projects = new Map<string, DockerContainer[]>();
   const traefik = getTraefikDefaults(containers);
@@ -59,7 +62,7 @@ export function discoverProjects(
   }
 
   return Array.from(projects.entries())
-    .map(([name, projectContainers]) => toProjectInfo(name, projectContainers, traefik))
+    .map(([name, projectContainers]) => toProjectInfo(name, projectContainers, traefik, apiRoutes))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -67,10 +70,11 @@ function toProjectInfo(
   name: string,
   containers: DockerContainer[],
   traefik: TraefikDefaults,
+  apiRoutes: RouteInfoByContainer,
 ): ProjectInfo {
   const firstLabels = containers[0]?.Labels ?? {};
   const services = containers
-    .map((container) => toServiceInfo(container, traefik))
+    .map((container) => toServiceInfo(container, traefik, apiRoutes))
     .sort((a, b) => a.name.localeCompare(b.name));
   const configFiles = splitConfigFiles(firstLabels["com.docker.compose.project.config_files"]);
 
@@ -85,14 +89,18 @@ function toProjectInfo(
   };
 }
 
-function toServiceInfo(container: DockerContainer, traefik: TraefikDefaults): ServiceInfo {
+function toServiceInfo(
+  container: DockerContainer,
+  traefik: TraefikDefaults,
+  apiRoutes: RouteInfoByContainer,
+): ServiceInfo {
   const labels = container.Labels ?? {};
   const name =
     labels["com.docker.compose.service"] ??
     cleanContainerName(container.Names?.[0]) ??
     container.Id.slice(0, 12);
   const role = detectRole(name, labels, container.Image);
-  const routes = extractTraefikRoutes(labels);
+  const routes = apiRoutes.get(container.Id) ?? extractTraefikRoutes(labels);
 
   return {
     id: container.Id,
@@ -258,13 +266,30 @@ function parseTraefikDefaultRule(command: string): string | undefined {
 }
 
 function renderDefaultRule(rule: string, values: Record<string, string>): string {
-  return rule.replace(
-    /{{\s*(normalize\s+)?\.([A-Za-z]+)\s*}}/g,
-    (_, normalize: string, key: string) => {
-      const value = values[key] ?? "";
-      return normalize ? normalizeTraefikName(value) : value;
-    },
-  );
+  return rule.replace(/{{\s*(.*?)\s*}}/g, (_, expression: string) => {
+    const normalized = expression.match(/^normalize\s+\.([A-Za-z]+)$/);
+    if (normalized) {
+      return normalizeTraefikName(values[normalized[1] ?? ""] ?? "");
+    }
+
+    const field = expression.match(/^\.([A-Za-z]+)/);
+    if (!field) {
+      return `{{ ${expression} }}`;
+    }
+
+    let value = values[field[1] ?? ""] ?? "";
+    for (const pipe of expression.slice(field[0].length).split("|")) {
+      const trimSuffix = pipe.trim().match(/^trimSuffix\s+["`]([^"`]+)["`]$/);
+      if (trimSuffix?.[1] && value.endsWith(trimSuffix[1])) {
+        value = value.slice(0, -trimSuffix[1].length);
+      }
+      if (pipe.trim() === "normalize") {
+        value = normalizeTraefikName(value);
+      }
+    }
+
+    return value;
+  });
 }
 
 function normalizeTraefikName(value: string): string {
