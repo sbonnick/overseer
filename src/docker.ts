@@ -79,6 +79,8 @@ type RequestOptions = {
   text?: boolean;
 };
 
+type DockerRequestInit = RequestInit & { unix?: string };
+
 export class DockerClient {
   readonly connection: DockerConnection;
 
@@ -150,7 +152,7 @@ export class DockerClient {
       : `http://docker${path}`;
   }
 
-  private buildInit(options: RequestOptions): RequestInit & { unix?: string } {
+  private buildInit(options: RequestOptions): DockerRequestInit {
     const headers: Record<string, string> = {};
     if (options.body) {
       headers["content-type"] = "application/json";
@@ -164,7 +166,7 @@ export class DockerClient {
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const response = await fetch(this.buildUrl(path), this.buildInit(options));
+    const response = await this.fetchDocker(path, options);
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       const error = new Error(
@@ -182,6 +184,22 @@ export class DockerClient {
       return undefined as T;
     }
     return JSON.parse(text) as T;
+  }
+
+  private async fetchDocker(path: string, options: RequestOptions): Promise<Response> {
+    try {
+      return await fetch(this.buildUrl(path), this.buildInit(options));
+    } catch (error) {
+      throw new Error(`Unable to connect to Docker API via ${this.describeConnection()}`, {
+        cause: error,
+      });
+    }
+  }
+
+  private describeConnection(): string {
+    return this.connection.kind === "http"
+      ? this.connection.baseUrl
+      : `unix socket ${this.connection.socketPath}`;
   }
 }
 

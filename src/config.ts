@@ -22,14 +22,30 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
 
   return {
     port: Number.isFinite(port) ? port : 3000,
-    docker:
-      dockerHost?.startsWith("http://") || dockerHost?.startsWith("https://")
-        ? { kind: "http", baseUrl: dockerHost.replace(/\/$/, "") }
-        : { kind: "socket", socketPath },
+    docker: parseDockerHost(dockerHost) ?? { kind: "socket", socketPath },
     pollIntervalMs: Number.isFinite(pollIntervalMs) ? pollIntervalMs : 10000,
     updateCheckIntervalMs: Number.isFinite(updateCheckIntervalMs)
       ? updateCheckIntervalMs
       : 86400000,
     projectFilter,
   };
+}
+
+function parseDockerHost(dockerHost: string | undefined): DockerConnection | undefined {
+  if (dockerHost?.startsWith("http://") || dockerHost?.startsWith("https://")) {
+    return { kind: "http", baseUrl: dockerHost.replace(/\/$/, "") };
+  }
+  if (dockerHost?.startsWith("tcp://")) {
+    return {
+      kind: "http",
+      baseUrl: `http://${dockerHost.slice("tcp://".length)}`.replace(/\/$/, ""),
+    };
+  }
+  const socketPath = parseSocketPath(dockerHost);
+  return socketPath ? { kind: "socket", socketPath } : undefined;
+}
+
+function parseSocketPath(dockerHost: string | undefined): string | undefined {
+  if (!dockerHost?.startsWith("unix://")) return undefined;
+  return dockerHost.slice("unix://".length) || undefined;
 }
