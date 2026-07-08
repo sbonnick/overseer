@@ -221,7 +221,7 @@ export const page = String.raw`<!doctype html>
               const proto = route.tls ? "https" : "http";
               return '<a href="' + proto + "://" + escapeHtml(host) + '" target="_blank" rel="noreferrer">'
                 + escapeHtml(host) + '</a>';
-            }).join("");
+            }).join("<br>");
             return '<div class="url">' + items + '</div>';
           }
           return '<div class="url"><code>' + escapeHtml(route.rule || "no rule") + '</code></div>';
