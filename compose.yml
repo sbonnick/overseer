@@ -20,6 +20,7 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./project:/root/project
     environment:
       - PORT=3000
       - POLL_INTERVAL_MS=10000

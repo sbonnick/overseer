@@ -1,3 +1,4 @@
+import { listComposeFiles, readComposeFile, writeComposeFile } from "./compose-files.ts";
 import { loadConfig } from "./config.ts";
 import { discoverProjects } from "./discovery.ts";
 import { DockerClient } from "./docker.ts";
@@ -50,6 +51,49 @@ export function startServer(): void {
           return json(
             { error: error instanceof Error ? error.message : "Unknown Docker API error" },
             502,
+          );
+        }
+      }
+
+      if (url.pathname === "/api/compose-files" && request.method === "GET") {
+        try {
+          return json({
+            root: config.composeFilesDir,
+            files: await listComposeFiles(config.composeFilesDir),
+          });
+        } catch (error) {
+          return json(
+            { error: error instanceof Error ? error.message : "Unable to list files" },
+            500,
+          );
+        }
+      }
+
+      if (url.pathname === "/api/compose-files/content") {
+        const filePath = url.searchParams.get("path") ?? "";
+        if (!filePath) {
+          return json({ error: "Missing file path" }, 400);
+        }
+
+        try {
+          if (request.method === "GET") {
+            return json({ file: await readComposeFile(config.composeFilesDir, filePath) });
+          }
+
+          if (request.method === "PUT") {
+            const body = (await request.json()) as { content?: unknown };
+            if (typeof body.content !== "string") {
+              return json({ error: "Missing file content" }, 400);
+            }
+
+            return json({
+              file: await writeComposeFile(config.composeFilesDir, filePath, body.content),
+            });
+          }
+        } catch (error) {
+          return json(
+            { error: error instanceof Error ? error.message : "Unable to access file" },
+            500,
           );
         }
       }

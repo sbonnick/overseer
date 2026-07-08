@@ -8,9 +8,11 @@ export type AppConfig = {
   pollIntervalMs: number;
   updateCheckIntervalMs: number;
   projectFilter?: string;
+  composeFilesDir: string;
 };
 
 const DEFAULT_SOCKET_PATH = "/var/run/docker.sock";
+const DEFAULT_COMPOSE_FILES_DIR = "~/project";
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
   const dockerHost = env.DOCKER_HOST?.trim();
@@ -19,6 +21,10 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
   const pollIntervalMs = Number.parseInt(env.POLL_INTERVAL_MS || "10000", 10);
   const projectFilter = env.COMPOSE_PROJECT?.trim() || undefined;
   const updateCheckIntervalMs = Number.parseInt(env.UPDATE_CHECK_INTERVAL_MS || "86400000", 10);
+  const composeFilesDir = expandHome(
+    env.COMPOSE_FILES_DIR?.trim() || DEFAULT_COMPOSE_FILES_DIR,
+    env,
+  );
 
   return {
     port: Number.isFinite(port) ? port : 3000,
@@ -28,7 +34,20 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
       ? updateCheckIntervalMs
       : 86400000,
     projectFilter,
+    composeFilesDir,
   };
+}
+
+function expandHome(path: string, env: Record<string, string | undefined>): string {
+  if (path === "~") {
+    return env.HOME || "/root";
+  }
+
+  if (path.startsWith("~/")) {
+    return `${env.HOME || "/root"}${path.slice(1)}`;
+  }
+
+  return path;
 }
 
 function parseDockerHost(dockerHost: string | undefined): DockerConnection | undefined {
