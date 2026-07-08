@@ -233,19 +233,21 @@ async function refreshProject(
     },
   });
 
-  try {
-    await docker.startContainer(created.Id);
-    const wait = await docker.waitContainer(created.Id);
-    const logs = (await docker.containerLogs(created.Id)).trim();
-    if (wait.StatusCode !== 0) {
-      throw new Error(
-        logs || wait.Error?.Message || `Compose refresh failed with status ${wait.StatusCode}`,
-      );
-    }
-    return { ok: true, action: "refreshed", logs };
-  } finally {
-    await docker.removeContainer(created.Id, { force: true }).catch(() => undefined);
+  await docker.startContainer(created.Id);
+  const wait = await docker.waitContainer(created.Id);
+  const logs = (await docker.containerLogs(created.Id)).trim();
+  if (wait.StatusCode !== 0) {
+    throw new Error(
+      [
+        `Compose refresh failed with status ${wait.StatusCode}. Helper container kept: ${helperName}`,
+        logs || wait.Error?.Message,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    );
   }
+  await docker.removeContainer(created.Id, { force: true }).catch(() => undefined);
+  return { ok: true, action: "refreshed", logs };
 }
 
 function buildComposeFileArgs(workingDir: string, configFiles: string[]): string[] {
