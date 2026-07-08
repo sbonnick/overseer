@@ -18,7 +18,7 @@ Add overseer to your existing Traefik compose project:
 ```yaml
 services:
   overseer:
-    image: ghcr.io/stewartb/overseer:latest
+    image: ghcr.io/sbonnick/overseer:latest
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
