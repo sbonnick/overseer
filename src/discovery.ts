@@ -45,6 +45,7 @@ export function discoverProjects(
   projectFilter?: string,
 ): ProjectInfo[] {
   const projects = new Map<string, DockerContainer[]>();
+  const traefik = getTraefikDefaults(containers);
 
   for (const container of containers) {
     const project = container.Labels?.["com.docker.compose.project"];
@@ -58,13 +59,19 @@ export function discoverProjects(
   }
 
   return Array.from(projects.entries())
-    .map(([name, projectContainers]) => toProjectInfo(name, projectContainers))
+    .map(([name, projectContainers]) => toProjectInfo(name, projectContainers, traefik))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function toProjectInfo(name: string, containers: DockerContainer[]): ProjectInfo {
+function toProjectInfo(
+  name: string,
+  containers: DockerContainer[],
+  traefik: TraefikDefaults,
+): ProjectInfo {
   const firstLabels = containers[0]?.Labels ?? {};
-  const services = containers.map(toServiceInfo).sort((a, b) => a.name.localeCompare(b.name));
+  const services = containers
+    .map((container) => toServiceInfo(container, traefik))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const configFiles = splitConfigFiles(firstLabels["com.docker.compose.project.config_files"]);
 
   return {
@@ -78,13 +85,14 @@ function toProjectInfo(name: string, containers: DockerContainer[]): ProjectInfo
   };
 }
 
-function toServiceInfo(container: DockerContainer): ServiceInfo {
+function toServiceInfo(container: DockerContainer, traefik: TraefikDefaults): ServiceInfo {
   const labels = container.Labels ?? {};
   const name =
     labels["com.docker.compose.service"] ??
     cleanContainerName(container.Names?.[0]) ??
     container.Id.slice(0, 12);
   const role = detectRole(name, labels, container.Image);
+  const routes = extractTraefikRoutes(labels);
 
   return {
     id: container.Id,
@@ -95,9 +103,36 @@ function toServiceInfo(container: DockerContainer): ServiceInfo {
     role,
     composeService: labels["com.docker.compose.service"],
     ports: formatPorts(container),
-    routes: extractTraefikRoutes(labels),
+    routes: routes.length ? routes : extractDefaultTraefikRoute(container, name, traefik),
     labels,
   };
+}
+
+type TraefikDefaults = {
+  networks: Set<string>;
+  defaultRule: string;
+};
+
+function getTraefikDefaults(containers: DockerContainer[]): TraefikDefaults {
+  const networks = new Set<string>();
+  let defaultRule = "Host(`{{ normalize .Name }}`)";
+
+  for (const container of containers) {
+    const labels = container.Labels ?? {};
+    const name =
+      labels["com.docker.compose.service"] ?? cleanContainerName(container.Names?.[0]) ?? "";
+    if (detectRole(name, labels, container.Image) !== "traefik") {
+      continue;
+    }
+
+    for (const network of Object.keys(container.NetworkSettings?.Networks ?? {})) {
+      networks.add(network);
+    }
+
+    defaultRule = parseTraefikDefaultRule(container.Command) ?? defaultRule;
+  }
+
+  return { networks, defaultRule };
 }
 
 function detectRole(name: string, labels: Record<string, string>, image: string): string {
@@ -177,6 +212,63 @@ function extractTraefikRoutes(labels: Record<string, string>): RouteInfo[] {
   }
 
   return Array.from(routers.values()).sort((a, b) => a.router.localeCompare(b.router));
+}
+
+function extractDefaultTraefikRoute(
+  container: DockerContainer,
+  serviceName: string,
+  traefik: TraefikDefaults,
+): RouteInfo[] {
+  const labels = container.Labels ?? {};
+  if (labels["traefik.enable"] === "false" || !sharesNetwork(container, traefik.networks)) {
+    return [];
+  }
+
+  const containerName = cleanContainerName(container.Names?.[0]) ?? serviceName;
+  const rule = renderDefaultRule(traefik.defaultRule, {
+    Name: serviceName,
+    ContainerName: containerName,
+    ServiceName: serviceName,
+  });
+
+  return [
+    {
+      router: serviceName,
+      rule,
+      entrypoints: [],
+      tls: false,
+      hostnames: extractHostnames(rule),
+    },
+  ];
+}
+
+function sharesNetwork(container: DockerContainer, networks: Set<string>): boolean {
+  if (!networks.size) {
+    return false;
+  }
+
+  return Object.keys(container.NetworkSettings?.Networks ?? {}).some((network) =>
+    networks.has(network),
+  );
+}
+
+function parseTraefikDefaultRule(command: string): string | undefined {
+  const match = command.match(/--providers\.docker\.defaultrule(?:=|\s+)(.+?)(?=\s+--|$)/i);
+  return match?.[1]?.trim().replace(/^(["'])(.*)\1$/, "$2");
+}
+
+function renderDefaultRule(rule: string, values: Record<string, string>): string {
+  return rule.replace(
+    /{{\s*(normalize\s+)?\.([A-Za-z]+)\s*}}/g,
+    (_, normalize: string, key: string) => {
+      const value = values[key] ?? "";
+      return normalize ? normalizeTraefikName(value) : value;
+    },
+  );
+}
+
+function normalizeTraefikName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 }
 
 function extractHostnames(rule: string): string[] {
