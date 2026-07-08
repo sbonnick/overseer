@@ -224,11 +224,11 @@ async function refreshProject(
   const created = await docker.createContainer(helperName, {
     Image: helperImage,
     Tty: true,
-    WorkingDir: "/workspace",
+    WorkingDir: workingDir,
     Env: [`DOCKER_HOST=${dockerHost}`],
     Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d"],
     HostConfig: {
-      Binds: [`${workingDir}:/workspace`, ...socketBind],
+      Binds: [`${workingDir}:${workingDir}`, ...socketBind],
       ...(networkMode ? { NetworkMode: networkMode } : {}),
     },
   });
@@ -254,7 +254,7 @@ function buildComposeFileArgs(workingDir: string, configFiles: string[]): string
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error(`Cannot refresh: compose file ${file} is outside ${workingDir}`);
     }
-    return ["-f", path.posix.join("/workspace", relative.split(path.sep).join(path.posix.sep))];
+    return ["-f", path.join(workingDir, relative)];
   });
 }
 
