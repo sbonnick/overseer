@@ -101,6 +101,7 @@ function toServiceInfo(
     container.Id.slice(0, 12);
   const role = detectRole(name, labels, container.Image);
   const routes = apiRoutes.get(container.Id) ?? extractTraefikRoutes(labels);
+  const defaultRoutes = extractDefaultTraefikRoute(container, name, traefik);
 
   return {
     id: container.Id,
@@ -111,7 +112,7 @@ function toServiceInfo(
     role,
     composeService: labels["com.docker.compose.service"],
     ports: formatPorts(container),
-    routes: routes.length ? routes : extractDefaultTraefikRoute(container, name, traefik),
+    routes: routes.length ? applyDefaultRules(routes, defaultRoutes) : defaultRoutes,
     labels,
   };
 }
@@ -248,6 +249,25 @@ function extractDefaultTraefikRoute(
       hostnames: extractHostnames(rule),
     },
   ];
+}
+
+function applyDefaultRules(routes: RouteInfo[], defaultRoutes: RouteInfo[]): RouteInfo[] {
+  const defaultRoute = defaultRoutes[0];
+  if (!defaultRoute) {
+    return routes;
+  }
+
+  return routes.map((route) => {
+    if (route.rule) {
+      return route;
+    }
+
+    return {
+      ...route,
+      rule: defaultRoute.rule,
+      hostnames: defaultRoute.hostnames,
+    };
+  });
 }
 
 function sharesNetwork(container: DockerContainer, networks: Set<string>): boolean {
