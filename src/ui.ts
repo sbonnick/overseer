@@ -246,13 +246,39 @@ export const page = String.raw`<!doctype html>
       let pollTimer = null;
       let currentFilePath = "";
       let lastSavedContent = "";
+      const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
+
+      function formatSince(value) {
+        const timestamp = new Date(value).getTime();
+        if (!Number.isFinite(timestamp)) return "just now";
+
+        const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+        if (seconds < 60) return "just now";
+
+        const units = [
+          ["year", 60 * 60 * 24 * 365],
+          ["month", 60 * 60 * 24 * 30],
+          ["week", 60 * 60 * 24 * 7],
+          ["day", 60 * 60 * 24],
+          ["hour", 60 * 60],
+          ["minute", 60],
+        ];
+
+        for (const [unit, unitSeconds] of units) {
+          if (seconds >= unitSeconds) {
+            return relativeTimeFormatter.format(-Math.floor(seconds / unitSeconds), unit);
+          }
+        }
+
+        return "just now";
+      }
 
       async function refresh() {
         try {
           const response = await fetch("/api/projects");
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "Request failed");
-          statusEl.textContent = "Updated " + new Date(data.updatedAt).toLocaleTimeString();
+          statusEl.textContent = "Updated " + formatSince(data.updatedAt);
           render(data.projects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 10000);
         } catch (error) {
