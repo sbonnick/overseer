@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts",
-    "check": "bunx biome check . && bun --check src/main.ts",
+    "check": "bunx biome check . && bunx tsc --noEmit",
     "format": "bunx biome format --write .",
     "lint": "bunx biome lint ."
   },
   "devDependencies": {
     "@biomejs/biome": "latest",
-    "bun-types": "latest"
+    "bun-types": "latest",
+    "typescript": "latest"
   }
 }

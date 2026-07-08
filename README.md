@@ -25,7 +25,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.overseer.rule=Host(`overseer.example.com`)"
-      - "traefik.http.routers.overseer.port=8080"
+      - "traefik.http.routers.overseer.port=3000"
 ```
 
 Then `docker compose up -d` and visit the hostname you configured.
@@ -38,7 +38,7 @@ All settings are via environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `8080` | HTTP listen port |
+| `PORT` | `3000` | HTTP listen port |
 | `DOCKER_HOST` | — | HTTP/HTTPS URL of a Docker proxy socket. If unset, uses the unix socket. |
 | `DOCKER_SOCKET_PATH` | `/var/run/docker.sock` | Path to the Docker unix socket |
 | `POLL_INTERVAL_MS` | `10000` | UI refresh interval in milliseconds |
