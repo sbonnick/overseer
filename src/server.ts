@@ -1,3 +1,4 @@
+import path from "node:path";
 import { listComposeFiles, readComposeFile, writeComposeFile } from "./compose-files.ts";
 import { loadConfig } from "./config.ts";
 import { discoverProjects } from "./discovery.ts";
@@ -112,6 +113,20 @@ export function startServer(): void {
         }
       }
 
+      const refreshMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/refresh$/);
+      if (refreshMatch && request.method === "POST") {
+        const projectName = refreshMatch[1] ?? "";
+        if (!projectName) {
+          return json({ error: "Invalid project name" }, 400);
+        }
+        try {
+          const result = await refreshProject(docker, decodeURIComponent(projectName));
+          return json(result);
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+        }
+      }
+
       return json({ error: "Not found" }, 404);
     },
   });
@@ -168,6 +183,109 @@ async function applyUpdate(
   await updates.invalidate(imageRef);
 
   return { ok: true, action: "restarted", containerId };
+}
+
+async function refreshProject(
+  docker: DockerClient,
+  projectName: string,
+): Promise<{ ok: true; action: string; logs: string }> {
+  const containers = await docker.listContainers();
+  const projectContainer = containers.find(
+    (container) => container.Labels?.["com.docker.compose.project"] === projectName,
+  );
+  if (!projectContainer) {
+    throw new Error(`Cannot refresh: compose project ${projectName} was not found`);
+  }
+
+  const labels = projectContainer.Labels ?? {};
+  const workingDir = labels["com.docker.compose.project.working_dir"];
+  if (!workingDir) {
+    throw new Error("Cannot refresh: compose working directory label is missing");
+  }
+
+  const composeArgs = buildComposeFileArgs(
+    workingDir,
+    splitConfigFiles(labels["com.docker.compose.project.config_files"]),
+  );
+  const helperImage = "docker:27-cli";
+  await docker.pullImage(helperImage);
+
+  const helperName = `overseer-compose-refresh-${sanitizeName(projectName)}-${Date.now()}`;
+  const socketBind =
+    docker.connection.kind === "socket"
+      ? [`${docker.connection.socketPath}:/var/run/docker.sock`]
+      : [];
+  const networkMode =
+    docker.connection.kind === "http" ? currentContainerNetwork(containers) : undefined;
+  const dockerHost =
+    docker.connection.kind === "socket"
+      ? "unix:///var/run/docker.sock"
+      : docker.connection.baseUrl.replace(/^http:\/\//, "tcp://");
+  const created = await docker.createContainer(helperName, {
+    Image: helperImage,
+    Tty: true,
+    WorkingDir: "/workspace",
+    Env: [`DOCKER_HOST=${dockerHost}`],
+    Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d"],
+    HostConfig: {
+      Binds: [`${workingDir}:/workspace`, ...socketBind],
+      ...(networkMode ? { NetworkMode: networkMode } : {}),
+    },
+  });
+
+  try {
+    await docker.startContainer(created.Id);
+    const wait = await docker.waitContainer(created.Id);
+    const logs = (await docker.containerLogs(created.Id)).trim();
+    if (wait.StatusCode !== 0) {
+      throw new Error(
+        logs || wait.Error?.Message || `Compose refresh failed with status ${wait.StatusCode}`,
+      );
+    }
+    return { ok: true, action: "refreshed", logs };
+  } finally {
+    await docker.removeContainer(created.Id, { force: true }).catch(() => undefined);
+  }
+}
+
+function buildComposeFileArgs(workingDir: string, configFiles: string[]): string[] {
+  return configFiles.flatMap((file) => {
+    const relative = path.isAbsolute(file) ? path.relative(workingDir, file) : file;
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(`Cannot refresh: compose file ${file} is outside ${workingDir}`);
+    }
+    return ["-f", path.posix.join("/workspace", relative.split(path.sep).join(path.posix.sep))];
+  });
+}
+
+function splitConfigFiles(value: string | undefined): string[] {
+  return (
+    value
+      ?.split(",")
+      .map((file) => file.trim())
+      .filter(Boolean) ?? []
+  );
+}
+
+function sanitizeName(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9_.-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "project"
+  );
+}
+
+function currentContainerNetwork(
+  containers: Awaited<ReturnType<DockerClient["listContainers"]>>,
+): string | undefined {
+  const hostname = Bun.env.HOSTNAME;
+  if (!hostname) {
+    return undefined;
+  }
+
+  const current = containers.find((container) => container.Id.startsWith(hostname));
+  return Object.keys(current?.NetworkSettings?.Networks ?? {})[0];
 }
 
 async function checkDocker(docker: DockerClient): Promise<boolean> {

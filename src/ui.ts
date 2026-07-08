@@ -107,6 +107,8 @@ export const page = String.raw`<!doctype html>
         gap: 16px; padding: 18px; border-bottom: 1px solid var(--line);
       }
 
+      .project-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
       .stats { display: flex; flex-wrap: wrap; gap: 8px; }
 
       .pill {
@@ -185,7 +187,7 @@ export const page = String.raw`<!doctype html>
 
       @media (max-width: 760px) {
         header, .project-head, .editor-head { flex-direction: column; align-items: start; }
-        .top-actions { justify-content: flex-start; }
+        .top-actions, .project-actions { justify-content: flex-start; }
         .cards { grid-template-columns: 1fr; }
         .compose-editor { grid-template-columns: 1fr; }
         .file-panel { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -381,11 +383,15 @@ export const page = String.raw`<!doctype html>
           + '<div class="project-head">'
             + '<div><h2>' + escapeHtml(project.name) + '</h2>'
             + '<p class="subtle">' + escapeHtml(project.workingDir || "working directory unknown") + '</p></div>'
-            + '<div class="stats">'
-              + '<span class="pill">' + project.runningCount + "/" + project.serviceCount + ' running</span>'
-              + (project.hasTraefik
-                ? '<span class="pill" style="color:var(--good)">Traefik detected</span>'
-                : '<span class="pill">No Traefik</span>')
+            + '<div class="project-actions">'
+              + '<button class="btn btn-refresh-project" type="button" data-project="'
+                + escapeHtml(project.name) + '">Refresh project</button>'
+              + '<div class="stats">'
+                + '<span class="pill">' + project.runningCount + "/" + project.serviceCount + ' running</span>'
+                + (project.hasTraefik
+                  ? '<span class="pill" style="color:var(--good)">Traefik detected</span>'
+                  : '<span class="pill">No Traefik</span>')
+              + '</div>'
             + '</div>'
           + '</div>'
           + '<div class="cards">' + project.services.map(renderCard).join("") + '</div>'
@@ -450,6 +456,12 @@ export const page = String.raw`<!doctype html>
       }
 
       projectsEl.addEventListener("click", async function(e) {
+        const refreshBtn = e.target.closest(".btn-refresh-project");
+        if (refreshBtn && !refreshBtn.disabled) {
+          await refreshProject(refreshBtn);
+          return;
+        }
+
         const btn = e.target.closest(".btn-update");
         if (!btn || btn.disabled) return;
         const id = btn.dataset.id;
@@ -471,6 +483,28 @@ export const page = String.raw`<!doctype html>
           alert("Update failed for " + image + ":\n" + error.message);
         }
       });
+
+      async function refreshProject(btn) {
+        const project = btn.dataset.project;
+        btn.disabled = true;
+        btn.textContent = "Refreshing...";
+
+        try {
+          const response = await fetch("/api/projects/" + encodeURIComponent(project) + "/refresh", {
+            method: "POST"
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Refresh failed");
+          btn.textContent = "Refreshed";
+          btn.classList.add("active");
+          if (pollTimer) clearTimeout(pollTimer);
+          refresh();
+        } catch (error) {
+          btn.disabled = false;
+          btn.textContent = "Refresh project";
+          alert("Refresh failed for " + project + ":\n" + error.message);
+        }
+      }
 
       filesToggle.addEventListener("click", function() {
         const open = !composeEditor.classList.contains("open");

@@ -146,6 +146,17 @@ export class DockerClient {
     await this.request<void>(`/containers/${id}/restart${query}`, { method: "POST" });
   }
 
+  async waitContainer(id: string): Promise<{ StatusCode: number; Error?: { Message?: string } }> {
+    return this.request<{ StatusCode: number; Error?: { Message?: string } }>(
+      `/containers/${id}/wait`,
+      { method: "POST" },
+    );
+  }
+
+  async containerLogs(id: string): Promise<string> {
+    return this.request<string>(`/containers/${id}/logs?stdout=true&stderr=true`, { text: true });
+  }
+
   private buildUrl(path: string): string {
     return this.connection.kind === "http"
       ? `${this.connection.baseUrl}${path}`
