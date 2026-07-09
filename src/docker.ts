@@ -97,7 +97,7 @@ export class DockerClient {
   }
 
   async inspectImage(ref: string): Promise<DockerImageInspect> {
-    return this.request<DockerImageInspect>(`/images/${ref}/json`);
+    return this.request<DockerImageInspect>(`/images/${encodeURIComponent(ref)}/json`);
   }
 
   async ping(): Promise<boolean> {

@@ -469,7 +469,8 @@ export const page = String.raw`<!doctype html>
           return '<div class="card-footer"><span class="subtle" style="font-size:12px">Checking...</span></div>';
         }
         if (update.error) {
-          return '<div class="card-footer"><span class="subtle" style="font-size:12px">Update check failed</span></div>';
+          return '<div class="card-footer"><span class="subtle" style="font-size:12px" title="'
+            + escapeHtml(update.error) + '">Update check failed</span></div>';
         }
         if (update.hasUpdate) {
           return '<div class="card-footer">'
