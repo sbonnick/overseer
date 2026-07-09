@@ -130,6 +130,8 @@ export const page = String.raw`<!doctype html>
 
       .card-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 
+      .service-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .service-icon { width: 28px; height: 28px; flex: 0 0 28px; object-fit: contain; }
       .card-name { font-size: 17px; font-weight: 700; }
       .card-role { color: var(--accent); font-size: 12px; }
 
@@ -429,7 +431,8 @@ export const page = String.raw`<!doctype html>
           : service.state === "exited" || service.state === "dead" ? "stopped" : "other";
         return '<div class="card">'
           + '<div class="card-head">'
-            + '<div><div class="card-name">' + escapeHtml(service.name) + '</div>'
+            + '<div><div class="service-title">' + renderServiceIcon(service.name)
+            + '<div class="card-name">' + escapeHtml(service.name) + '</div></div>'
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div>'
             + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
           + '</div>'
@@ -438,6 +441,15 @@ export const page = String.raw`<!doctype html>
           + renderPorts(service.ports)
           + renderFooter(service)
         + '</div>';
+      }
+
+      function renderServiceIcon(name) {
+        const iconName = String(name).toLowerCase();
+        const baseUrl = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
+        const iconUrl = baseUrl + encodeURIComponent(iconName) + ".svg";
+        const fallbackUrl = baseUrl + "docker.svg";
+        return '<img class="service-icon" src="' + iconUrl + '" alt="" aria-hidden="true"'
+          + ' onerror="this.onerror=null;this.src=\'' + fallbackUrl + '\'">';
       }
 
       function renderUrls(routes) {
