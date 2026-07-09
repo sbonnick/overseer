@@ -131,7 +131,7 @@ export const page = String.raw`<!doctype html>
       .card-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 
       .service-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
-      .service-icon { width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; }
+      .service-icon { width: 42px; height: 42px; flex: 0 0 42px; padding: 2px; object-fit: contain; }
       .service-details { min-width: 0; }
       .card-name { font-size: 17px; font-weight: 700; }
       .card-role { color: var(--accent); font-size: 12px; }
@@ -208,6 +208,7 @@ export const page = String.raw`<!doctype html>
         </div>
         <div class="top-actions">
           <button class="btn" id="filesToggle" type="button">Compose files</button>
+          <button class="btn active" id="portsToggle" type="button" aria-pressed="true">Ports</button>
           <div class="status" id="status">Loading...</div>
         </div>
       </header>
@@ -238,6 +239,7 @@ export const page = String.raw`<!doctype html>
       const statusEl = document.querySelector("#status");
       const projectsEl = document.querySelector("#projects");
       const filesToggle = document.querySelector("#filesToggle");
+      const portsToggle = document.querySelector("#portsToggle");
       const composeEditor = document.querySelector("#composeEditor");
       const filesRoot = document.querySelector("#filesRoot");
       const fileList = document.querySelector("#fileList");
@@ -249,6 +251,8 @@ export const page = String.raw`<!doctype html>
       let pollTimer = null;
       let currentFilePath = "";
       let lastSavedContent = "";
+      let currentProjects = [];
+      let showPorts = true;
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
 
       function formatSince(value) {
@@ -282,7 +286,8 @@ export const page = String.raw`<!doctype html>
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "Request failed");
           statusEl.textContent = "Updated " + formatSince(data.updatedAt);
-          render(data.projects);
+          currentProjects = data.projects;
+          render(currentProjects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 10000);
         } catch (error) {
           statusEl.textContent = "Docker unavailable";
@@ -439,7 +444,7 @@ export const page = String.raw`<!doctype html>
           + '</div>'
           + '<div class="card-image">' + escapeHtml(service.image) + '</div>'
           + renderUrls(service.routes)
-          + renderPorts(service.ports)
+          + (showPorts ? renderPorts(service.ports) : "")
           + renderFooter(service)
         + '</div>';
       }
@@ -557,6 +562,13 @@ export const page = String.raw`<!doctype html>
         composeEditor.classList.toggle("open", open);
         filesToggle.classList.toggle("active", open);
         if (open) loadComposeFiles();
+      });
+
+      portsToggle.addEventListener("click", function() {
+        showPorts = !showPorts;
+        portsToggle.classList.toggle("active", showPorts);
+        portsToggle.setAttribute("aria-pressed", String(showPorts));
+        render(currentProjects);
       });
 
       fileList.addEventListener("click", function(e) {
