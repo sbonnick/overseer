@@ -131,7 +131,7 @@ export const page = String.raw`<!doctype html>
       .card-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 
       .service-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
-      .service-icon { width: 42px; height: 42px; flex: 0 0 42px; padding: 2px; object-fit: contain; }
+      .service-icon { width: 42px; height: 42px; flex: 0 0 42px; padding: 4px; object-fit: contain; }
       .service-details { min-width: 0; }
       .card-name { font-size: 17px; font-weight: 700; }
       .card-role { color: var(--accent); font-size: 12px; }
@@ -208,7 +208,8 @@ export const page = String.raw`<!doctype html>
         </div>
         <div class="top-actions">
           <button class="btn" id="filesToggle" type="button">Compose files</button>
-          <button class="btn active" id="portsToggle" type="button" aria-pressed="true">Ports</button>
+          <button class="btn" id="portsToggle" type="button" aria-pressed="false">Ports</button>
+          <button class="btn" id="imageToggle" type="button" aria-pressed="false">Image</button>
           <div class="status" id="status">Loading...</div>
         </div>
       </header>
@@ -240,6 +241,7 @@ export const page = String.raw`<!doctype html>
       const projectsEl = document.querySelector("#projects");
       const filesToggle = document.querySelector("#filesToggle");
       const portsToggle = document.querySelector("#portsToggle");
+      const imageToggle = document.querySelector("#imageToggle");
       const composeEditor = document.querySelector("#composeEditor");
       const filesRoot = document.querySelector("#filesRoot");
       const fileList = document.querySelector("#fileList");
@@ -252,7 +254,8 @@ export const page = String.raw`<!doctype html>
       let currentFilePath = "";
       let lastSavedContent = "";
       let currentProjects = [];
-      let showPorts = true;
+      let showPorts = false;
+      let showImage = false;
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
 
       function formatSince(value) {
@@ -442,7 +445,7 @@ export const page = String.raw`<!doctype html>
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
             + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
           + '</div>'
-          + '<div class="card-image">' + escapeHtml(service.image) + '</div>'
+          + (showImage ? '<div class="card-image">' + escapeHtml(service.image) + '</div>' : "")
           + renderUrls(service.routes)
           + (showPorts ? renderPorts(service.ports) : "")
           + renderFooter(service)
@@ -568,6 +571,13 @@ export const page = String.raw`<!doctype html>
         showPorts = !showPorts;
         portsToggle.classList.toggle("active", showPorts);
         portsToggle.setAttribute("aria-pressed", String(showPorts));
+        render(currentProjects);
+      });
+
+      imageToggle.addEventListener("click", function() {
+        showImage = !showImage;
+        imageToggle.classList.toggle("active", showImage);
+        imageToggle.setAttribute("aria-pressed", String(showImage));
         render(currentProjects);
       });
 

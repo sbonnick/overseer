@@ -158,12 +158,12 @@ async function resolveServiceImageNames(
 ): Promise<void> {
   const services = projects
     .flatMap((project) => project.services)
-    .filter((service) => isImageId(service.image));
+    .filter((service) => isImageId(service.image) || service.image.includes("sha256:"));
   await Promise.all(
     services.map(async (service) => {
       try {
         const imageInfo = await docker.inspectImage(service.image);
-        service.image = resolveUpdateImageRef(service.image, imageInfo.RepoTags) ?? service.image;
+        service.image = resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
       } catch {
         // Keep the Docker-provided image ID if it cannot be resolved to a repo tag.
       }
@@ -199,15 +199,16 @@ async function applyUpdate(
   if (newImage.Id !== container.Image) {
     const containerName = container.Name.replace(/^\//, "");
     const networks = container.NetworkSettings?.Networks ?? {};
+    const labels = {
+      ...(container.Config.Labels ?? {}),
+      "com.docker.compose.image": imageRef,
+      ...(isSelf ? { "io.sbonnick.overseer.self": "true" } : {}),
+    };
 
     const createConfig = {
       ...container.Config,
       Image: imageRef,
-      ...(isSelf
-        ? {
-            Labels: { ...container.Config.Labels, "io.sbonnick.overseer.self": "true" },
-          }
-        : {}),
+      Labels: labels,
       HostConfig: container.HostConfig,
       NetworkingConfig: {
         EndpointsConfig: Object.fromEntries(
@@ -257,6 +258,12 @@ async function applyUpdate(
   await updates.invalidate(imageRef);
 
   return { ok: true, action: "restarted", containerId };
+}
+
+function resolveReadableImageRef(imageRef: string, repoTags: string[] | undefined): string | null {
+  if (isImageId(imageRef)) return resolveUpdateImageRef(imageRef, repoTags);
+  if (imageRef.includes("sha256:")) return repoTags?.find((tag) => !tag.includes("<none>")) ?? null;
+  return imageRef;
 }
 
 function isCurrentContainer(
