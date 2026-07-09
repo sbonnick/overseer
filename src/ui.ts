@@ -411,7 +411,7 @@ export const page = String.raw`<!doctype html>
             + '<p class="subtle">' + escapeHtml(project.workingDir || "working directory unknown") + '</p></div>'
             + '<div class="project-actions">'
               + '<button class="btn btn-refresh-project" type="button" data-project="'
-                + escapeHtml(project.name) + '">Refresh project</button>'
+                + escapeHtml(project.name) + '" title="Apply saved compose file changes by running docker compose up for this project">Apply compose changes</button>'
               + '<div class="stats">'
                 + '<span class="pill">' + project.runningCount + "/" + project.serviceCount + ' running</span>'
                 + (project.hasTraefik
@@ -475,7 +475,7 @@ export const page = String.raw`<!doctype html>
           return '<div class="card-footer">'
             + '<span class="update-badge">Update available</span>'
             + '<button class="btn-update" data-id="' + escapeHtml(service.id) + '" data-image="'
-              + escapeHtml(service.image) + '">Update</button>'
+              + escapeHtml(service.image) + '" title="Pull this service image and recreate/restart only this container; compose file changes are not applied">Update image</button>'
           + '</div>';
         }
         return '<div class="card-footer"><span class="update-badge up-to-date">Up to date</span></div>';
@@ -505,7 +505,7 @@ export const page = String.raw`<!doctype html>
           refresh();
         } catch (error) {
           btn.disabled = false;
-          btn.textContent = "Update";
+          btn.textContent = "Update image";
           alert("Update failed for " + image + ":\n" + error.message);
         }
       });
@@ -527,7 +527,7 @@ export const page = String.raw`<!doctype html>
           refresh();
         } catch (error) {
           btn.disabled = false;
-          btn.textContent = "Refresh project";
+          btn.textContent = "Apply compose changes";
           alert("Refresh failed for " + project + ":\n" + error.message);
         }
       }

@@ -99,14 +99,15 @@ function toServiceInfo(
     labels["com.docker.compose.service"] ??
     cleanContainerName(container.Names?.[0]) ??
     container.Id.slice(0, 12);
-  const role = detectRole(name, labels, container.Image);
+  const image = labels["com.docker.compose.image"] ?? container.Image;
+  const role = detectRole(name, labels, image);
   const routes = apiRoutes.get(container.Id) ?? extractTraefikRoutes(labels);
   const defaultRoutes = extractDefaultTraefikRoute(container, name, traefik);
 
   return {
     id: container.Id,
     name,
-    image: container.Image,
+    image,
     state: container.State,
     status: container.Status,
     role,

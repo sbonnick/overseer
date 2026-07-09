@@ -44,7 +44,9 @@ export class UpdateChecker {
     try {
       const containers = await this.docker.listContainers();
       const imageRefs = new Set(
-        containers.filter((c) => c.Labels?.["com.docker.compose.project"]).map((c) => c.Image),
+        containers
+          .filter((c) => c.Labels?.["com.docker.compose.project"])
+          .map((c) => c.Labels?.["com.docker.compose.image"] ?? c.Image),
       );
       await Promise.allSettled([...imageRefs].map((ref) => this.checkOne(ref)));
     } catch (error) {
