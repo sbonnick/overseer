@@ -57,7 +57,8 @@ export class UpdateChecker {
   async checkOne(imageRef: string): Promise<UpdateStatus> {
     try {
       const imageInfo = await this.docker.inspectImage(imageRef);
-      const parsed = parseImageRef(imageRef);
+      const updateRef = resolveUpdateImageRef(imageRef, imageInfo.RepoTags);
+      const parsed = updateRef ? parseImageRef(updateRef) : null;
 
       let status: UpdateStatus;
 
@@ -86,4 +87,13 @@ export class UpdateChecker {
       return status;
     }
   }
+}
+
+function resolveUpdateImageRef(imageRef: string, repoTags: string[] | undefined): string | null {
+  if (!isImageId(imageRef)) return imageRef;
+  return repoTags?.find((tag) => !tag.includes("<none>")) ?? null;
+}
+
+function isImageId(imageRef: string): boolean {
+  return /^sha256:[a-f0-9]{64}$/i.test(imageRef);
 }
