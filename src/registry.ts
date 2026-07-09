@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 export type ParsedImageRef = {
   registry: string;
   repository: string;
@@ -7,6 +9,12 @@ export type ParsedImageRef = {
 };
 
 const DOCKER_HUB_REGISTRY = "registry-1.docker.io";
+const DOCKER_HUB_AUTH_ALIASES = new Set([
+  DOCKER_HUB_REGISTRY,
+  "docker.io",
+  "index.docker.io",
+  "https://index.docker.io/v1/",
+]);
 
 const MANIFEST_ACCEPT = [
   "application/vnd.oci.image.index.v1+json",
@@ -67,7 +75,7 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
   if (response.status === 401) {
     const authHeader = response.headers.get("www-authenticate");
     if (authHeader) {
-      const token = await getAuthToken(authHeader, pullScope);
+      const token = await getAuthToken(authHeader, parsed.registry, pullScope);
       if (token) {
         response = await fetch(url, {
           headers: { accept: MANIFEST_ACCEPT, authorization: `Bearer ${token}` },
@@ -78,6 +86,7 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
       if (response.status === 401) {
         const retryToken = await getAuthToken(
           response.headers.get("www-authenticate") ?? authHeader,
+          parsed.registry,
           pullScope,
           true,
         );
@@ -96,7 +105,9 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
   }
 
   if (!response.ok) {
-    throw new Error(`Registry ${parsed.registry} returned ${response.status}`);
+    throw new Error(
+      `Registry ${parsed.registry} returned ${response.status} for ${parsed.repository}:${reference}`,
+    );
   }
 
   return response.headers.get("docker-content-digest");
@@ -104,6 +115,7 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
 
 async function getAuthToken(
   wwwAuthenticate: string,
+  registry: string,
   fallbackScope?: string,
   forceScope = false,
 ): Promise<string | null> {
@@ -117,11 +129,92 @@ async function getAuthToken(
   if (service) params.set("service", service);
   if (scope) params.set("scope", scope);
 
-  const response = await fetch(`${realm}?${params}`);
+  const credential = await getRegistryCredential(registry);
+  const response = await fetch(`${realm}?${params}`, {
+    headers: credential ? { authorization: credential.authorization } : undefined,
+  });
   if (!response.ok) return null;
 
   const data = (await response.json()) as { token?: string; access_token?: string };
   return data.token ?? data.access_token ?? null;
+}
+
+type DockerAuthEntry = {
+  auth?: string;
+  username?: string;
+  password?: string;
+  identitytoken?: string;
+};
+
+type DockerAuthConfig = {
+  auths?: Record<string, DockerAuthEntry>;
+};
+
+type RegistryCredential = {
+  authorization: string;
+};
+
+let dockerAuthConfigPromise: Promise<DockerAuthConfig | null> | undefined;
+
+async function getRegistryCredential(registry: string): Promise<RegistryCredential | null> {
+  const config = await loadDockerAuthConfig();
+  const auths = config?.auths;
+  if (!auths) return null;
+
+  for (const alias of registryAliases(registry)) {
+    const entry = auths[alias] ?? auths[stripProtocol(alias)];
+    const credential = entry ? toRegistryCredential(entry) : null;
+    if (credential) return credential;
+  }
+
+  return null;
+}
+
+function loadDockerAuthConfig(): Promise<DockerAuthConfig | null> {
+  dockerAuthConfigPromise ??= readDockerAuthConfig();
+  return dockerAuthConfigPromise;
+}
+
+async function readDockerAuthConfig(): Promise<DockerAuthConfig | null> {
+  const inlineConfig = Bun.env.DOCKER_AUTH_CONFIG?.trim();
+  if (inlineConfig) return parseDockerAuthConfig(inlineConfig);
+
+  const dockerConfigDir = Bun.env.DOCKER_CONFIG?.trim() || `${Bun.env.HOME || "/root"}/.docker`;
+  const file = Bun.file(`${dockerConfigDir.replace(/\/$/, "")}/config.json`);
+  if (!(await file.exists())) return null;
+
+  return parseDockerAuthConfig(await file.text());
+}
+
+function parseDockerAuthConfig(value: string): DockerAuthConfig | null {
+  try {
+    const parsed = JSON.parse(value) as DockerAuthConfig;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function registryAliases(registry: string): string[] {
+  if (DOCKER_HUB_AUTH_ALIASES.has(registry)) {
+    return [...DOCKER_HUB_AUTH_ALIASES];
+  }
+  return [registry, `https://${registry}`, `https://${registry}/v1/`];
+}
+
+function stripProtocol(value: string): string {
+  return value.replace(/^https?:\/\//, "");
+}
+
+function toRegistryCredential(entry: DockerAuthEntry): RegistryCredential | null {
+  if (entry.auth) return { authorization: `Basic ${entry.auth}` };
+  if (entry.username && entry.password) {
+    return {
+      authorization: `Basic ${Buffer.from(`${entry.username}:${entry.password}`).toString("base64")}`,
+    };
+  }
+  if (entry.identitytoken) return { authorization: `Bearer ${entry.identitytoken}` };
+  return null;
 }
 
 function parseAuthChallenge(wwwAuthenticate: string): Map<string, string> {
