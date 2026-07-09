@@ -57,6 +57,7 @@ export function parseImageRef(ref: string): ParsedImageRef | null {
 export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | null> {
   const reference = parsed.digest ?? parsed.tag;
   const url = `https://${parsed.registry}/v2/${parsed.repository}/manifests/${reference}`;
+  const pullScope = `repository:${parsed.repository}:pull`;
 
   let response = await fetch(url, {
     headers: { accept: MANIFEST_ACCEPT },
@@ -66,12 +67,26 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
   if (response.status === 401) {
     const authHeader = response.headers.get("www-authenticate");
     if (authHeader) {
-      const token = await getAuthToken(authHeader);
+      const token = await getAuthToken(authHeader, pullScope);
       if (token) {
         response = await fetch(url, {
           headers: { accept: MANIFEST_ACCEPT, authorization: `Bearer ${token}` },
           redirect: "follow",
         });
+      }
+
+      if (response.status === 401) {
+        const retryToken = await getAuthToken(
+          response.headers.get("www-authenticate") ?? authHeader,
+          pullScope,
+          true,
+        );
+        if (retryToken && retryToken !== token) {
+          response = await fetch(url, {
+            headers: { accept: MANIFEST_ACCEPT, authorization: `Bearer ${retryToken}` },
+            redirect: "follow",
+          });
+        }
       }
     }
   }
@@ -87,21 +102,39 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
   return response.headers.get("docker-content-digest");
 }
 
-async function getAuthToken(wwwAuthenticate: string): Promise<string | null> {
-  const realmMatch = wwwAuthenticate.match(/realm="([^"]+)"/);
-  if (!realmMatch?.[1]) return null;
+async function getAuthToken(
+  wwwAuthenticate: string,
+  fallbackScope?: string,
+  forceScope = false,
+): Promise<string | null> {
+  const challenge = parseAuthChallenge(wwwAuthenticate);
+  const realm = challenge.get("realm");
+  if (!realm) return null;
 
   const params = new URLSearchParams();
-  const serviceMatch = wwwAuthenticate.match(/service="([^"]+)"/);
-  const scopeMatch = wwwAuthenticate.match(/scope="([^"]+)"/);
-  if (serviceMatch?.[1]) params.set("service", serviceMatch[1]);
-  if (scopeMatch?.[1]) params.set("scope", scopeMatch[1]);
+  const service = challenge.get("service");
+  const scope = forceScope ? fallbackScope : (challenge.get("scope") ?? fallbackScope);
+  if (service) params.set("service", service);
+  if (scope) params.set("scope", scope);
 
-  const response = await fetch(`${realmMatch[1]}?${params}`);
+  const response = await fetch(`${realm}?${params}`);
   if (!response.ok) return null;
 
   const data = (await response.json()) as { token?: string; access_token?: string };
   return data.token ?? data.access_token ?? null;
+}
+
+function parseAuthChallenge(wwwAuthenticate: string): Map<string, string> {
+  const params = new Map<string, string>();
+  const parts = wwwAuthenticate.replace(/^\s*Bearer\s+/i, "");
+  const pattern = /([a-zA-Z_][\w-]*)="([^"]*)"/g;
+  let match: RegExpExecArray | null;
+  match = pattern.exec(parts);
+  while (match !== null) {
+    params.set(match[1].toLowerCase(), match[2]);
+    match = pattern.exec(parts);
+  }
+  return params;
 }
 
 export function getLocalDigest(repoDigests: string[] | undefined): string | null {
