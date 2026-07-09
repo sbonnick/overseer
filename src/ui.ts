@@ -131,7 +131,8 @@ export const page = String.raw`<!doctype html>
       .card-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 
       .service-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
-      .service-icon { width: 28px; height: 28px; flex: 0 0 28px; object-fit: contain; }
+      .service-icon { width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; }
+      .service-details { min-width: 0; }
       .card-name { font-size: 17px; font-weight: 700; }
       .card-role { color: var(--accent); font-size: 12px; }
 
@@ -431,9 +432,9 @@ export const page = String.raw`<!doctype html>
           : service.state === "exited" || service.state === "dead" ? "stopped" : "other";
         return '<div class="card">'
           + '<div class="card-head">'
-            + '<div><div class="service-title">' + renderServiceIcon(service.name)
-            + '<div class="card-name">' + escapeHtml(service.name) + '</div></div>'
-            + '<div class="card-role">' + escapeHtml(service.role) + '</div></div>'
+            + '<div class="service-title">' + renderServiceIcon(service.name)
+            + '<div class="service-details"><div class="card-name">' + escapeHtml(service.name) + '</div>'
+            + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
             + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
           + '</div>'
           + '<div class="card-image">' + escapeHtml(service.image) + '</div>'
@@ -510,7 +511,13 @@ export const page = String.raw`<!doctype html>
 
         try {
           const response = await fetch("/api/services/" + id + "/update", { method: "POST" });
-          const data = await response.json();
+          const body = await response.text();
+          let data;
+          try {
+            data = body ? JSON.parse(body) : {};
+          } catch {
+            throw new Error("Server returned " + response.status + ": " + (body || response.statusText));
+          }
           if (!response.ok) throw new Error(data.error || "Update failed");
           btn.textContent = "Updated";
           btn.classList.add("success");

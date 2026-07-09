@@ -108,6 +108,23 @@ export function startServer(): void {
         }
         try {
           const result = await applyUpdate(docker, updates, decodeURIComponent(containerId));
+          if (result.retireContainerId) {
+            const retireContainerId = result.retireContainerId;
+            // Send the success response before removing the process handling this request.
+            setTimeout(() => {
+              docker.removeContainer(retireContainerId, { force: true }).catch((error) => {
+                console.error("[updates] failed to remove replaced Overseer container:", error);
+              });
+            }, 250);
+          }
+          if (result.restartContainerId) {
+            const restartContainerId = result.restartContainerId;
+            setTimeout(() => {
+              docker.restartContainer(restartContainerId).catch((error) => {
+                console.error("[updates] failed to restart Overseer container:", error);
+              });
+            }, 250);
+          }
           return json(result);
         } catch (error) {
           return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
@@ -158,8 +175,15 @@ async function applyUpdate(
   docker: DockerClient,
   updates: UpdateChecker,
   containerId: string,
-): Promise<{ ok: true; action: string; containerId: string }> {
+): Promise<{
+  ok: true;
+  action: string;
+  containerId: string;
+  retireContainerId?: string;
+  restartContainerId?: string;
+}> {
   const container = await docker.inspectContainer(containerId);
+  const isSelf = isCurrentContainer(container);
   let imageRef = container.Config.Image;
 
   if (imageRef.startsWith("sha256:")) {
@@ -179,6 +203,11 @@ async function applyUpdate(
     const createConfig = {
       ...container.Config,
       Image: imageRef,
+      ...(isSelf
+        ? {
+            Labels: { ...container.Config.Labels, "io.sbonnick.overseer.self": "true" },
+          }
+        : {}),
       HostConfig: container.HostConfig,
       NetworkingConfig: {
         EndpointsConfig: Object.fromEntries(
@@ -190,6 +219,26 @@ async function applyUpdate(
       },
     };
 
+    if (isSelf) {
+      const replacementName = `${containerName}-replaced-${Date.now()}`;
+      await docker.renameContainer(containerId, replacementName);
+      try {
+        const created = await docker.createContainer(containerName, createConfig);
+        await docker.startContainer(created.Id);
+        await updates.invalidate(imageRef);
+
+        return {
+          ok: true,
+          action: "recreated",
+          containerId: created.Id,
+          retireContainerId: containerId,
+        };
+      } catch (error) {
+        await docker.renameContainer(containerId, containerName).catch(() => {});
+        throw error;
+      }
+    }
+
     await docker.stopContainer(containerId);
     await docker.removeContainer(containerId, { force: true });
     const created = await docker.createContainer(containerName, createConfig);
@@ -199,10 +248,25 @@ async function applyUpdate(
     return { ok: true, action: "recreated", containerId: created.Id };
   }
 
+  if (isSelf) {
+    await updates.invalidate(imageRef);
+    return { ok: true, action: "restarted", containerId, restartContainerId: containerId };
+  }
+
   await docker.restartContainer(containerId);
   await updates.invalidate(imageRef);
 
   return { ok: true, action: "restarted", containerId };
+}
+
+function isCurrentContainer(
+  container: Awaited<ReturnType<DockerClient["inspectContainer"]>>,
+): boolean {
+  const hostname = Bun.env.HOSTNAME;
+  return (
+    container.Config.Labels?.["io.sbonnick.overseer.self"] === "true" ||
+    (hostname !== undefined && hostname.length > 0 && container.Id.startsWith(hostname))
+  );
 }
 
 async function refreshProject(

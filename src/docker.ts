@@ -129,6 +129,12 @@ export class DockerClient {
     await this.request<void>(`/containers/${id}${query}`, { method: "DELETE" });
   }
 
+  async renameContainer(id: string, name: string): Promise<void> {
+    await this.request<void>(`/containers/${id}/rename?name=${encodeURIComponent(name)}`, {
+      method: "POST",
+    });
+  }
+
   async createContainer(name: string, config: unknown): Promise<{ Id: string }> {
     const query = name ? `?name=${encodeURIComponent(name)}` : "";
     return this.request<{ Id: string }>(`/containers/create${query}`, {
