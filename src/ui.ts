@@ -288,7 +288,9 @@ export const page = String.raw`<!doctype html>
           const response = await fetch("/api/projects");
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "Request failed");
-          statusEl.textContent = "Updated " + formatSince(data.updatedAt);
+          statusEl.textContent = data.updatesCheckedAt
+            ? "Updates checked " + formatSince(data.updatesCheckedAt)
+            : "Checking updates...";
           currentProjects = data.projects;
           render(currentProjects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 10000);

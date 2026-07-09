@@ -14,6 +14,7 @@ export class UpdateChecker {
   private cache = new Map<string, UpdateStatus>();
   private checkIntervalMs: number;
   private timer?: ReturnType<typeof setInterval>;
+  private lastCheckedAt?: string;
 
   constructor(docker: DockerClient, checkIntervalMs: number) {
     this.docker = docker;
@@ -35,6 +36,10 @@ export class UpdateChecker {
     return this.cache.get(imageRef);
   }
 
+  getLastCheckedAt(): string | undefined {
+    return this.lastCheckedAt;
+  }
+
   async invalidate(imageRef: string): Promise<void> {
     this.cache.delete(imageRef);
     await this.checkOne(imageRef);
@@ -49,6 +54,7 @@ export class UpdateChecker {
           .map((c) => c.Labels?.["com.docker.compose.image"] ?? c.Image),
       );
       await Promise.allSettled([...imageRefs].map((ref) => this.checkOne(ref)));
+      this.lastCheckedAt = new Date().toISOString();
     } catch (error) {
       console.error("[updates] check all failed:", error);
     }

@@ -47,6 +47,7 @@ export function startServer(): void {
           return json({
             projects,
             updatedAt: new Date().toISOString(),
+            updatesCheckedAt: updates.getLastCheckedAt(),
             pollIntervalMs: config.pollIntervalMs,
           });
         } catch (error) {
