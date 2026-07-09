@@ -76,6 +76,9 @@ export class UpdateChecker {
       }
 
       this.cache.set(imageRef, status);
+      if (updateRef && updateRef !== imageRef) {
+        this.cache.set(updateRef, status);
+      }
       return status;
     } catch (error) {
       const status: UpdateStatus = {
@@ -89,11 +92,14 @@ export class UpdateChecker {
   }
 }
 
-function resolveUpdateImageRef(imageRef: string, repoTags: string[] | undefined): string | null {
+export function resolveUpdateImageRef(
+  imageRef: string,
+  repoTags: string[] | undefined,
+): string | null {
   if (!isImageId(imageRef)) return imageRef;
   return repoTags?.find((tag) => !tag.includes("<none>")) ?? null;
 }
 
-function isImageId(imageRef: string): boolean {
+export function isImageId(imageRef: string): boolean {
   return /^sha256:[a-f0-9]{64}$/i.test(imageRef);
 }

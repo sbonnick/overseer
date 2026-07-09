@@ -5,7 +5,7 @@ import { discoverProjects } from "./discovery.ts";
 import { DockerClient } from "./docker.ts";
 import { discoverTraefikApiRoutes } from "./traefik.ts";
 import { page } from "./ui.ts";
-import { UpdateChecker } from "./updates.ts";
+import { isImageId, resolveUpdateImageRef, UpdateChecker } from "./updates.ts";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 
@@ -38,6 +38,7 @@ export function startServer(): void {
           const containers = await docker.listContainers();
           const traefikRoutes = await discoverTraefikApiRoutes(containers);
           const projects = discoverProjects(containers, config.projectFilter, traefikRoutes);
+          await resolveServiceImageNames(docker, projects);
           for (const project of projects) {
             for (const service of project.services) {
               service.update = updates.getStatus(service.image);
@@ -132,6 +133,25 @@ export function startServer(): void {
   });
 
   console.log(`overseer listening on http://0.0.0.0:${config.port}`);
+}
+
+async function resolveServiceImageNames(
+  docker: DockerClient,
+  projects: ReturnType<typeof discoverProjects>,
+): Promise<void> {
+  const services = projects
+    .flatMap((project) => project.services)
+    .filter((service) => isImageId(service.image));
+  await Promise.all(
+    services.map(async (service) => {
+      try {
+        const imageInfo = await docker.inspectImage(service.image);
+        service.image = resolveUpdateImageRef(service.image, imageInfo.RepoTags) ?? service.image;
+      } catch {
+        // Keep the Docker-provided image ID if it cannot be resolved to a repo tag.
+      }
+    }),
+  );
 }
 
 async function applyUpdate(
