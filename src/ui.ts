@@ -188,6 +188,22 @@ export const page = String.raw`<!doctype html>
       }
       .error { border-color: color-mix(in srgb, var(--bad), var(--line)); }
 
+      .refresh-overlay {
+        position: fixed; inset: 0; z-index: 10; display: none; place-items: center; padding: 24px;
+        background: rgb(13 17 23 / 92%); backdrop-filter: blur(10px);
+      }
+      .refresh-overlay.visible { display: grid; }
+      .refresh-dialog {
+        width: min(400px, 100%); padding: 28px; text-align: center;
+        border: 1px solid var(--line); border-radius: 18px; background: var(--panel);
+        box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+      }
+      .refresh-spinner {
+        width: 32px; height: 32px; margin: 0 auto 16px; border: 3px solid var(--line);
+        border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
       @media (max-width: 760px) {
         header, .project-head, .editor-head { flex-direction: column; align-items: start; }
         .top-actions, .project-actions { justify-content: flex-start; }
@@ -234,6 +250,13 @@ export const page = String.raw`<!doctype html>
         </section>
       </section>
       <section class="projects" id="projects"></section>
+      <div class="refresh-overlay" id="refreshOverlay" role="status" aria-live="assertive">
+        <div class="refresh-dialog">
+          <div class="refresh-spinner" aria-hidden="true"></div>
+          <h2>Applying compose changes</h2>
+          <p class="subtle">Waiting for Overseer to come back online...</p>
+        </div>
+      </div>
     </main>
 
     <script type="module">
@@ -242,6 +265,7 @@ export const page = String.raw`<!doctype html>
       const filesToggle = document.querySelector("#filesToggle");
       const portsToggle = document.querySelector("#portsToggle");
       const imageToggle = document.querySelector("#imageToggle");
+      const refreshOverlay = document.querySelector("#refreshOverlay");
       const composeEditor = document.querySelector("#composeEditor");
       const filesRoot = document.querySelector("#filesRoot");
       const fileList = document.querySelector("#fileList");
@@ -257,6 +281,35 @@ export const page = String.raw`<!doctype html>
       let showPorts = false;
       let showImage = false;
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
+
+      async function readJson(response) {
+        const body = await response.text();
+        try {
+          return body ? JSON.parse(body) : {};
+        } catch {
+          const error = new Error("Server returned " + response.status + ": " + (body || response.statusText));
+          error.status = response.status;
+          throw error;
+        }
+      }
+
+      function setRefreshOverlay(visible) {
+        refreshOverlay.classList.toggle("visible", visible);
+      }
+
+      async function waitForOverseer() {
+        while (true) {
+          try {
+            const response = await fetch("/api/health", { cache: "no-store" });
+            if (response.ok) return;
+          } catch {}
+          await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+        }
+      }
+
+      function isTemporaryGatewayError(error) {
+        return error instanceof TypeError || [502, 503, 504].includes(error.status);
+      }
 
       function formatSince(value) {
         const timestamp = new Date(value).getTime();
@@ -286,7 +339,7 @@ export const page = String.raw`<!doctype html>
       async function refresh() {
         try {
           const response = await fetch("/api/projects");
-          const data = await response.json();
+          const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Request failed");
           statusEl.textContent = data.updatesCheckedAt
             ? "Updates checked " + formatSince(data.updatesCheckedAt)
@@ -314,7 +367,7 @@ export const page = String.raw`<!doctype html>
       async function loadComposeFiles() {
         try {
           const response = await fetch("/api/compose-files");
-          const data = await response.json();
+          const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to load files");
 
           filesRoot.textContent = data.root;
@@ -340,7 +393,7 @@ export const page = String.raw`<!doctype html>
         saveFile.disabled = true;
         try {
           const response = await fetch("/api/compose-files/content?path=" + encodeURIComponent(path));
-          const data = await response.json();
+          const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to open file");
 
           currentFilePath = data.file.path;
@@ -368,7 +421,7 @@ export const page = String.raw`<!doctype html>
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ content: composeTextarea.value })
           });
-          const data = await response.json();
+          const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to save file");
 
           lastSavedContent = composeTextarea.value;
@@ -521,13 +574,7 @@ export const page = String.raw`<!doctype html>
 
         try {
           const response = await fetch("/api/services/" + id + "/update", { method: "POST" });
-          const body = await response.text();
-          let data;
-          try {
-            data = body ? JSON.parse(body) : {};
-          } catch {
-            throw new Error("Server returned " + response.status + ": " + (body || response.statusText));
-          }
+          const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Update failed");
           btn.textContent = "Updated";
           btn.classList.add("success");
@@ -544,18 +591,26 @@ export const page = String.raw`<!doctype html>
         const project = btn.dataset.project;
         btn.disabled = true;
         btn.textContent = "Refreshing...";
+        setRefreshOverlay(true);
 
         try {
           const response = await fetch("/api/projects/" + encodeURIComponent(project) + "/refresh", {
             method: "POST"
           });
-          const data = await response.json();
+          const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Refresh failed");
           btn.textContent = "Refreshed";
           btn.classList.add("active");
           if (pollTimer) clearTimeout(pollTimer);
+          setRefreshOverlay(false);
           refresh();
         } catch (error) {
+          if (isTemporaryGatewayError(error)) {
+            await waitForOverseer();
+            window.location.reload();
+            return;
+          }
+          setRefreshOverlay(false);
           btn.disabled = false;
           btn.textContent = "Apply compose changes";
           alert("Refresh failed for " + project + ":\n" + error.message);

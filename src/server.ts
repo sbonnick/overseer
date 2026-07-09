@@ -299,10 +299,6 @@ async function refreshProject(
     workingDir,
     splitConfigFiles(labels["com.docker.compose.project.config_files"]),
   );
-  const services = refreshableServices(docker, containers, projectName);
-  if (!services.length) {
-    throw new Error("Cannot refresh: no refreshable compose services were found");
-  }
   const helperImage = "docker:27-cli";
   await docker.pullImage(helperImage);
 
@@ -322,7 +318,7 @@ async function refreshProject(
     Tty: true,
     WorkingDir: workingDir,
     Env: [`DOCKER_HOST=${dockerHost}`],
-    Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d", "--no-deps", ...services],
+    Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d"],
     HostConfig: {
       Binds: [`${workingDir}:${workingDir}`, ...socketBind],
       ...(networkMode ? { NetworkMode: networkMode } : {}),
@@ -372,57 +368,6 @@ function sanitizeName(value: string): string {
       .replace(/[^a-z0-9_.-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "project"
   );
-}
-
-function refreshableServices(
-  docker: DockerClient,
-  containers: Awaited<ReturnType<DockerClient["listContainers"]>>,
-  projectName: string,
-): string[] {
-  const proxyHost =
-    docker.connection.kind === "http" ? hostname(docker.connection.baseUrl) : undefined;
-  const services = new Set<string>();
-
-  for (const container of containers) {
-    const labels = container.Labels ?? {};
-    if (labels["com.docker.compose.project"] !== projectName) {
-      continue;
-    }
-
-    const service = labels["com.docker.compose.service"];
-    if (!service || isDockerProxy(container, service, proxyHost)) {
-      continue;
-    }
-
-    services.add(service);
-  }
-
-  return Array.from(services).sort();
-}
-
-function isDockerProxy(
-  container: Awaited<ReturnType<DockerClient["listContainers"]>>[number],
-  service: string,
-  proxyHost: string | undefined,
-): boolean {
-  if (!proxyHost) {
-    return false;
-  }
-
-  const names = container.Names?.map((name) => name.replace(/^\//, "")) ?? [];
-  return (
-    service === proxyHost ||
-    names.includes(proxyHost) ||
-    names.some((name) => name.includes(proxyHost))
-  );
-}
-
-function hostname(value: string): string | undefined {
-  try {
-    return new URL(value).hostname || undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function currentContainerNetwork(
