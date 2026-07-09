@@ -39,10 +39,15 @@ export const page = String.raw`<!doctype html>
       .subtle { color: var(--muted); }
 
       .status {
-        border: 1px solid var(--line); border-radius: 999px;
-        padding: 8px 12px; white-space: nowrap;
-        background: color-mix(in srgb, var(--panel), transparent 20%);
+        display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line);
+        border-radius: 999px; padding: 8px 12px; white-space: nowrap;
+        background: color-mix(in srgb, var(--panel), transparent 20%); color: var(--text);
+        font: inherit; cursor: pointer;
       }
+      .status:hover:not(:disabled) { border-color: var(--accent); color: #a5d6ff; }
+      .status:disabled { cursor: wait; }
+      .status-icon { width: 15px; height: 15px; flex: 0 0 15px; }
+      .status.refreshing .status-icon { animation: spin 0.8s linear infinite; }
 
       .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
@@ -226,7 +231,7 @@ export const page = String.raw`<!doctype html>
           <button class="btn" id="filesToggle" type="button">Compose files</button>
           <button class="btn" id="portsToggle" type="button" aria-pressed="false">Ports</button>
           <button class="btn" id="imageToggle" type="button" aria-pressed="false">Image</button>
-          <div class="status" id="status">Loading...</div>
+          <button class="status" id="status" type="button" title="Check for updates now">Loading...</button>
         </div>
       </header>
       <section class="compose-editor" id="composeEditor">
@@ -280,7 +285,9 @@ export const page = String.raw`<!doctype html>
       let currentProjects = [];
       let showPorts = false;
       let showImage = false;
+      let isRefreshing = false;
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
+      const refreshIcon = '<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.23-6.36L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 15.23 6.36L21 16"></path><path d="M21 21v-5h-5"></path></svg>';
 
       async function readJson(response) {
         const body = await response.text();
@@ -311,6 +318,11 @@ export const page = String.raw`<!doctype html>
         return error instanceof TypeError || [502, 503, 504].includes(error.status);
       }
 
+      function setStatus(message, refreshing) {
+        statusEl.classList.toggle("refreshing", refreshing);
+        statusEl.innerHTML = refreshIcon + '<span>' + escapeHtml(message) + '</span>';
+      }
+
       function formatSince(value) {
         const timestamp = new Date(value).getTime();
         if (!Number.isFinite(timestamp)) return "just now";
@@ -337,21 +349,28 @@ export const page = String.raw`<!doctype html>
       }
 
       async function refresh() {
+        if (isRefreshing) return;
+        isRefreshing = true;
+        statusEl.disabled = true;
+        setStatus("Refreshing...", true);
         try {
           const response = await fetch("/api/projects");
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Request failed");
-          statusEl.textContent = data.updatesCheckedAt
+          setStatus(data.updatesCheckedAt
             ? "Updates checked " + formatSince(data.updatesCheckedAt)
-            : "Checking updates...";
+            : "Checking updates...", false);
           currentProjects = data.projects;
           render(currentProjects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 10000);
         } catch (error) {
-          statusEl.textContent = "Docker unavailable";
+          setStatus("Docker unavailable", false);
           projectsEl.innerHTML = '<div class="error"><h2>Unable to load projects</h2><p class="subtle">'
             + escapeHtml(error.message) + '</p></div>';
           pollTimer = setTimeout(refresh, 10000);
+        } finally {
+          isRefreshing = false;
+          statusEl.disabled = false;
         }
       }
 
@@ -622,6 +641,11 @@ export const page = String.raw`<!doctype html>
         composeEditor.classList.toggle("open", open);
         filesToggle.classList.toggle("active", open);
         if (open) loadComposeFiles();
+      });
+
+      statusEl.addEventListener("click", function() {
+        if (pollTimer) clearTimeout(pollTimer);
+        refresh();
       });
 
       portsToggle.addEventListener("click", function() {
