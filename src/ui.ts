@@ -27,7 +27,10 @@ export const page = String.raw`<!doctype html>
 
       body {
         margin: 0;
-        background: radial-gradient(circle at top left, #1f3b64, transparent 34rem), var(--bg);
+        background-color: var(--bg);
+        background-image: radial-gradient(circle at top left, #1f3b64, transparent 34rem);
+        background-repeat: no-repeat;
+        background-size: 68rem 68rem;
         color: var(--text);
         font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
