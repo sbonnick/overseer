@@ -21,6 +21,18 @@ export function startServer(): void {
     async fetch(request) {
       const url = new URL(request.url);
 
+      if (url.pathname === "/favicon.svg") {
+        return svgAsset("favicon.svg");
+      }
+
+      if (url.pathname === "/assets/overseer.svg") {
+        return svgAsset("overseer.svg");
+      }
+
+      if (url.pathname === "/assets/overseer-maskable.svg") {
+        return svgAsset("overseer-maskable.svg");
+      }
+
       if (url.pathname === "/") {
         return new Response(page, { headers: { "content-type": "text/html; charset=utf-8" } });
       }
@@ -392,4 +404,13 @@ async function checkDocker(docker: DockerClient): Promise<boolean> {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
+
+function svgAsset(fileName: string): Response {
+  return new Response(Bun.file(`assets/${fileName}`), {
+    headers: {
+      "cache-control": "public, max-age=86400",
+      "content-type": "image/svg+xml; charset=utf-8",
+    },
+  });
 }

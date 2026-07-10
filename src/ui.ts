@@ -3,6 +3,7 @@ export const page = String.raw`<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Overseer</title>
     <style>
       :root {
@@ -35,7 +36,8 @@ export const page = String.raw`<!doctype html>
       }
 
       h1, h2, h3, p { margin: 0; }
-      h1 { font-size: clamp(32px, 7vw, 56px); letter-spacing: -0.06em; }
+      h1 { display: flex; align-items: center; gap: 12px; font-size: clamp(32px, 7vw, 56px); letter-spacing: -0.06em; }
+      .app-icon { width: 0.72em; height: 0.72em; flex: 0 0 0.72em; }
       .subtle { color: var(--muted); }
 
       .status {
@@ -224,7 +226,7 @@ export const page = String.raw`<!doctype html>
     <main>
       <header>
         <div>
-          <h1>Overseer</h1>
+          <h1><img class="app-icon" src="/assets/overseer.svg" alt="" />Overseer</h1>
           <p class="subtle">Lite Docker Compose project manager for Traefik-backed stacks.</p>
         </div>
         <div class="top-actions">
@@ -529,7 +531,9 @@ export const page = String.raw`<!doctype html>
       function renderServiceIcon(name) {
         const iconName = String(name).toLowerCase();
         const baseUrl = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
-        const iconUrl = baseUrl + encodeURIComponent(iconName) + ".svg";
+        const iconUrl = iconName === "overseer"
+          ? "/assets/overseer.svg"
+          : baseUrl + encodeURIComponent(iconName) + ".svg";
         const fallbackUrl = baseUrl + "docker.svg";
         return '<img class="service-icon" src="' + iconUrl + '" alt="" aria-hidden="true"'
           + ' onerror="this.onerror=null;this.src=\'' + fallbackUrl + '\'">';
