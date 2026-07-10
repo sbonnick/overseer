@@ -1,6 +1,6 @@
 import path from "node:path";
 import { listComposeFiles, readComposeFile, writeComposeFile } from "./compose-files.ts";
-import { loadConfig } from "./config.ts";
+import { type DockerConnection, loadConfig } from "./config.ts";
 import { discoverProjects } from "./discovery.ts";
 import { DockerClient } from "./docker.ts";
 import { discoverTraefikApiRoutes } from "./traefik.ts";
@@ -66,6 +66,14 @@ export function startServer(): void {
           const containers = await docker.listContainers();
           const traefikRoutes = await discoverTraefikApiRoutes(containers);
           const projects = discoverProjects(containers, config.projectFilter, traefikRoutes);
+          const proxyProject = dockerProxyProject(containers, config.docker);
+          if (proxyProject) {
+            const project = projects.find((item) => item.name === proxyProject);
+            if (project) {
+              project.refreshDisabledReason =
+                "Compose refresh is unavailable because this project contains the Docker proxy Overseer uses.";
+            }
+          }
           await resolveServiceImageNames(docker, projects);
           for (const project of projects) {
             for (const service of project.services) {
@@ -318,6 +326,11 @@ async function refreshProject(
   }
 
   const labels = projectContainer.Labels ?? {};
+  if (dockerProxyProject(containers, docker.connection) === projectName) {
+    throw new Error(
+      "Cannot refresh: this project contains the Docker proxy Overseer uses. Connect Overseer directly to the Docker socket to refresh it.",
+    );
+  }
   const workingDir = labels["com.docker.compose.project.working_dir"];
   if (!workingDir) {
     throw new Error("Cannot refresh: compose working directory label is missing");
@@ -335,10 +348,6 @@ async function refreshProject(
     docker.connection.kind === "socket"
       ? [`${docker.connection.socketPath}:/var/run/docker.sock`]
       : [];
-  const networkMode =
-    docker.connection.kind === "http"
-      ? currentContainerNetwork(containers, hostname(docker.connection.baseUrl))
-      : undefined;
   const dockerHost =
     docker.connection.kind === "socket"
       ? "unix:///var/run/docker.sock"
@@ -351,7 +360,6 @@ async function refreshProject(
     Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d"],
     HostConfig: {
       Binds: [`${workingDir}:${workingDir}`, ...socketBind],
-      ...(networkMode ? { NetworkMode: networkMode } : {}),
     },
   });
 
@@ -400,25 +408,16 @@ function sanitizeName(value: string): string {
   );
 }
 
-function currentContainerNetwork(
+function dockerProxyProject(
   containers: Awaited<ReturnType<DockerClient["listContainers"]>>,
-  proxyHost?: string,
+  connection: DockerConnection,
 ): string | undefined {
-  const hostname = Bun.env.HOSTNAME;
-  const current = containers.find(
-    (container) =>
-      container.Labels?.["io.sbonnick.overseer.self"] === "true" ||
-      (hostname !== undefined && hostname.length > 0 && container.Id.startsWith(hostname)),
-  );
-  const currentNetwork = Object.keys(current?.NetworkSettings?.Networks ?? {})[0];
-  if (currentNetwork) {
-    return currentNetwork;
-  }
-
-  if (!proxyHost) {
+  if (connection.kind !== "http") {
     return undefined;
   }
 
+  const proxyHost = hostname(connection.baseUrl);
+  if (!proxyHost) return undefined;
   const proxy = containers.find((container) => {
     const service = container.Labels?.["com.docker.compose.service"];
     const names = container.Names?.map((name) => name.replace(/^\//, "")) ?? [];
@@ -428,7 +427,7 @@ function currentContainerNetwork(
       names.some((name) => name.includes(proxyHost))
     );
   });
-  return Object.keys(proxy?.NetworkSettings?.Networks ?? {})[0];
+  return proxy?.Labels?.["com.docker.compose.project"];
 }
 
 function hostname(value: string): string | undefined {

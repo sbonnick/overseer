@@ -36,6 +36,7 @@ export type ProjectInfo = {
   name: string;
   workingDir?: string;
   configFiles: string[];
+  refreshDisabledReason?: string;
   serviceCount: number;
   runningCount: number;
   hasTraefik: boolean;

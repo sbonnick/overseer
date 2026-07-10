@@ -496,13 +496,16 @@ export const page = String.raw`<!doctype html>
       }
 
       function renderProject(project) {
+        const refreshDisabled = Boolean(project.refreshDisabledReason);
         return '<article class="project">'
           + '<div class="project-head">'
             + '<div><h2>' + escapeHtml(project.name) + '</h2>'
             + '<p class="subtle">' + escapeHtml(project.workingDir || "working directory unknown") + '</p></div>'
             + '<div class="project-actions">'
               + '<button class="btn btn-refresh-project" type="button" data-project="'
-                + escapeHtml(project.name) + '" title="Apply saved compose file changes by running docker compose up for this project">Apply compose changes</button>'
+                + escapeHtml(project.name) + '"'
+                + (refreshDisabled ? ' disabled title="' + escapeHtml(project.refreshDisabledReason) + '"' : ' title="Apply saved compose file changes by running docker compose up for this project"')
+                + '>Apply compose changes</button>'
               + '<div class="stats">'
                 + '<span class="pill">' + project.runningCount + "/" + project.serviceCount + ' running</span>'
                 + (project.hasTraefik
