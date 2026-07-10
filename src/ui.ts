@@ -3,7 +3,11 @@ export const page = String.raw`<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/favicon-16.svg" sizes="16x16" type="image/svg+xml" />
+    <link rel="icon" href="/assets/favicon-32.svg" sizes="32x32" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.svg" sizes="any" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/overseer-180.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>Overseer</title>
     <style>
       :root {
@@ -516,7 +520,7 @@ export const page = String.raw`<!doctype html>
           : service.state === "exited" || service.state === "dead" ? "stopped" : "other";
         return '<div class="card">'
           + '<div class="card-head">'
-            + '<div class="service-title">' + renderServiceIcon(service.name)
+            + '<div class="service-title">' + renderServiceIcon(service)
             + '<div class="service-details"><div class="card-name">' + escapeHtml(service.name) + '</div>'
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
             + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
@@ -528,10 +532,13 @@ export const page = String.raw`<!doctype html>
         + '</div>';
       }
 
-      function renderServiceIcon(name) {
-        const iconName = String(name).toLowerCase();
+      function renderServiceIcon(service) {
+        const iconName = String(service.name).toLowerCase();
         const baseUrl = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
-        const iconUrl = iconName === "overseer"
+        const isOverseer = iconName === "overseer"
+          || String(service.image).includes("sbonnick/overseer")
+          || service.labels["io.sbonnick.overseer.self"] === "true";
+        const iconUrl = isOverseer
           ? "/assets/overseer.svg"
           : baseUrl + encodeURIComponent(iconName) + ".svg";
         const fallbackUrl = baseUrl + "docker.svg";

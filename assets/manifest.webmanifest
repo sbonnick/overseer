@@ -1,0 +1,28 @@
+{
+  "name": "Overseer",
+  "short_name": "Overseer",
+  "description": "Docker Compose project manager",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#151b23",
+  "icons": [
+    {
+      "src": "/assets/overseer-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/overseer-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/overseer-maskable.svg",
+      "sizes": "96x96",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

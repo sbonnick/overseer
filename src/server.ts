@@ -8,6 +8,16 @@ import { page } from "./ui.ts";
 import { isImageId, resolveUpdateImageRef, UpdateChecker } from "./updates.ts";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
+const svgAssets = new Set([
+  "favicon.svg",
+  "favicon-16.svg",
+  "favicon-32.svg",
+  "overseer.svg",
+  "overseer-180.svg",
+  "overseer-192.svg",
+  "overseer-512.svg",
+  "overseer-maskable.svg",
+]);
 
 export function startServer(): void {
   const config = loadConfig();
@@ -25,12 +35,18 @@ export function startServer(): void {
         return svgAsset("favicon.svg");
       }
 
-      if (url.pathname === "/assets/overseer.svg") {
-        return svgAsset("overseer.svg");
+      const assetName = url.pathname.match(/^\/assets\/([a-z0-9-]+\.svg)$/)?.[1];
+      if (assetName && svgAssets.has(assetName)) {
+        return svgAsset(assetName);
       }
 
-      if (url.pathname === "/assets/overseer-maskable.svg") {
-        return svgAsset("overseer-maskable.svg");
+      if (url.pathname === "/manifest.webmanifest") {
+        return new Response(Bun.file("assets/manifest.webmanifest"), {
+          headers: {
+            "cache-control": "public, max-age=86400",
+            "content-type": "application/manifest+json; charset=utf-8",
+          },
+        });
       }
 
       if (url.pathname === "/") {
@@ -320,7 +336,9 @@ async function refreshProject(
       ? [`${docker.connection.socketPath}:/var/run/docker.sock`]
       : [];
   const networkMode =
-    docker.connection.kind === "http" ? currentContainerNetwork(containers) : undefined;
+    docker.connection.kind === "http"
+      ? currentContainerNetwork(containers, hostname(docker.connection.baseUrl))
+      : undefined;
   const dockerHost =
     docker.connection.kind === "socket"
       ? "unix:///var/run/docker.sock"
@@ -384,14 +402,41 @@ function sanitizeName(value: string): string {
 
 function currentContainerNetwork(
   containers: Awaited<ReturnType<DockerClient["listContainers"]>>,
+  proxyHost?: string,
 ): string | undefined {
   const hostname = Bun.env.HOSTNAME;
-  if (!hostname) {
+  const current = containers.find(
+    (container) =>
+      container.Labels?.["io.sbonnick.overseer.self"] === "true" ||
+      (hostname !== undefined && hostname.length > 0 && container.Id.startsWith(hostname)),
+  );
+  const currentNetwork = Object.keys(current?.NetworkSettings?.Networks ?? {})[0];
+  if (currentNetwork) {
+    return currentNetwork;
+  }
+
+  if (!proxyHost) {
     return undefined;
   }
 
-  const current = containers.find((container) => container.Id.startsWith(hostname));
-  return Object.keys(current?.NetworkSettings?.Networks ?? {})[0];
+  const proxy = containers.find((container) => {
+    const service = container.Labels?.["com.docker.compose.service"];
+    const names = container.Names?.map((name) => name.replace(/^\//, "")) ?? [];
+    return (
+      service === proxyHost ||
+      names.includes(proxyHost) ||
+      names.some((name) => name.includes(proxyHost))
+    );
+  });
+  return Object.keys(proxy?.NetworkSettings?.Networks ?? {})[0];
+}
+
+function hostname(value: string): string | undefined {
+  try {
+    return new URL(value).hostname || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function checkDocker(docker: DockerClient): Promise<boolean> {

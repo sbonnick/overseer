@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 64 64" fill="none">
+  <title>Overseer</title>
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="#151b23" stroke="#30363d" stroke-width="2"/>
+  <path d="M16 19h32v10H16zM16 35h32v10H16z" stroke="#8b949e" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="23" cy="24" r="2.5" fill="#3fb950"/>
+  <circle cx="23" cy="40" r="2.5" fill="#3fb950"/>
+  <path d="M33 24h9M33 40h9" stroke="#2f81f7" stroke-width="3" stroke-linecap="round"/>
+</svg>
