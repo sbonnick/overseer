@@ -517,7 +517,11 @@ export const page = String.raw`<!doctype html>
               + '</div>'
             + '</div>'
           + '</div>'
-          + '<div class="cards">' + project.services.map(renderCard).join("") + '</div>'
+          + '<div class="cards">' + project.services
+            .toSorted(function(a, b) {
+              return Number(Boolean(b.update?.hasUpdate)) - Number(Boolean(a.update?.hasUpdate));
+            })
+            .map(renderCard).join("") + '</div>'
         + '</article>';
       }
 
