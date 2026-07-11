@@ -23,7 +23,7 @@ services:
       - ./project:/root/project
     environment:
       - PORT=3000
-      - POLL_INTERVAL_MS=10000
+      - POLL_INTERVAL_MS=60000
       - UPDATE_CHECK_INTERVAL_MS=86400000
     labels:
       - "traefik.enable=true"

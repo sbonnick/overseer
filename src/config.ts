@@ -13,12 +13,16 @@ export type AppConfig = {
 
 const DEFAULT_SOCKET_PATH = "/var/run/docker.sock";
 const DEFAULT_COMPOSE_FILES_DIR = "~/project";
+const DEFAULT_POLL_INTERVAL_MS = 60000;
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
   const dockerHost = env.DOCKER_HOST?.trim();
   const socketPath = env.DOCKER_SOCKET_PATH?.trim() || DEFAULT_SOCKET_PATH;
   const port = Number.parseInt(env.PORT || "3000", 10);
-  const pollIntervalMs = Number.parseInt(env.POLL_INTERVAL_MS || "10000", 10);
+  const pollIntervalMs = Number.parseInt(
+    env.POLL_INTERVAL_MS || String(DEFAULT_POLL_INTERVAL_MS),
+    10,
+  );
   const projectFilter = env.COMPOSE_PROJECT?.trim() || undefined;
   const updateCheckIntervalMs = Number.parseInt(env.UPDATE_CHECK_INTERVAL_MS || "86400000", 10);
   const composeFilesDir = expandHome(
@@ -29,7 +33,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
   return {
     port: Number.isFinite(port) ? port : 3000,
     docker: parseDockerHost(dockerHost) ?? { kind: "socket", socketPath },
-    pollIntervalMs: Number.isFinite(pollIntervalMs) ? pollIntervalMs : 10000,
+    pollIntervalMs: Number.isFinite(pollIntervalMs) ? pollIntervalMs : DEFAULT_POLL_INTERVAL_MS,
     updateCheckIntervalMs: Number.isFinite(updateCheckIntervalMs)
       ? updateCheckIntervalMs
       : 86400000,

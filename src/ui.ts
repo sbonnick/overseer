@@ -611,12 +611,22 @@ export const page = String.raw`<!doctype html>
         try {
           const response = await fetch("/api/services/" + id + "/update", { method: "POST" });
           const data = await readJson(response);
-          if (!response.ok) throw new Error(data.error || "Update failed");
+          if (!response.ok) {
+            const error = new Error(data.error || "Update failed");
+            error.status = response.status;
+            throw error;
+          }
           btn.textContent = "Updated";
           btn.classList.add("success");
           if (pollTimer) clearTimeout(pollTimer);
           refresh();
         } catch (error) {
+          // Updating Overseer briefly disconnects the proxy before its replacement is ready.
+          if (isTemporaryGatewayError(error)) {
+            await waitForOverseer();
+            window.location.reload();
+            return;
+          }
           btn.disabled = false;
           btn.textContent = "Update image";
           alert("Update failed for " + image + ":\n" + error.message);

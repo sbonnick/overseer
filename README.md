@@ -43,7 +43,7 @@ All settings are via environment variables:
 | `PORT` | `3000` | HTTP listen port |
 | `DOCKER_HOST` | — | HTTP/HTTPS URL of a Docker proxy socket. If unset, uses the unix socket. |
 | `DOCKER_SOCKET_PATH` | `/var/run/docker.sock` | Path to the Docker unix socket |
-| `POLL_INTERVAL_MS` | `10000` | UI refresh interval in milliseconds |
+| `POLL_INTERVAL_MS` | `60000` | UI refresh interval in milliseconds |
 | `UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | How often to check registries for image updates |
 | `COMPOSE_PROJECT` | — | Filter to a single compose project name |
 | `COMPOSE_FILES_DIR` | `~/project` | Directory searched recursively for Docker Compose YAML files editable in the UI |
