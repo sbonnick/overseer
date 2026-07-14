@@ -143,7 +143,10 @@ export function startServer(): void {
         if (!containerId) {
           return json({ error: "Invalid container ID" }, 400);
         }
+        let imageRef: string | undefined;
         try {
+          imageRef = await getUpdateImageRef(docker, decodeURIComponent(containerId));
+          updates.markUpdating(imageRef);
           const result = await applyUpdate(docker, updates, decodeURIComponent(containerId));
           if (result.retireContainerId) {
             const retireContainerId = result.retireContainerId;
@@ -164,6 +167,7 @@ export function startServer(): void {
           }
           return json(result);
         } catch (error) {
+          if (imageRef) updates.clearUpdating(imageRef);
           return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
         }
       }
@@ -295,6 +299,16 @@ async function applyUpdate(
   await updates.invalidate(imageRef);
 
   return { ok: true, action: "restarted", containerId };
+}
+
+async function getUpdateImageRef(docker: DockerClient, containerId: string): Promise<string> {
+  const container = await docker.inspectContainer(containerId);
+  if (!container.Config.Image.startsWith("sha256:")) return container.Config.Image;
+
+  const imageInfo = await docker.inspectImage(container.Image);
+  const tag = imageInfo.RepoTags?.find((value) => !value.includes("<none>"));
+  if (!tag) throw new Error("Cannot update: image has no tag reference");
+  return tag;
 }
 
 function resolveReadableImageRef(imageRef: string, repoTags: string[] | undefined): string | null {

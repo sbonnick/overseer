@@ -3,6 +3,7 @@ import { getLocalDigest, getRemoteDigest, hasUpdate, parseImageRef } from "./reg
 
 export type UpdateStatus = {
   hasUpdate: boolean;
+  updating?: boolean;
   remoteDigest?: string;
   localDigest?: string;
   checkedAt: string;
@@ -10,8 +11,10 @@ export type UpdateStatus = {
 };
 
 export class UpdateChecker {
+  private static readonly updateGracePeriodMs = 5 * 60 * 1000;
   private docker: DockerClient;
   private cache = new Map<string, UpdateStatus>();
+  private updating = new Map<string, number>();
   private checkIntervalMs: number;
   private timer?: ReturnType<typeof setInterval>;
   private lastCheckedAt?: string;
@@ -33,7 +36,22 @@ export class UpdateChecker {
   }
 
   getStatus(imageRef: string): UpdateStatus | undefined {
-    return this.cache.get(imageRef);
+    const status = this.cache.get(imageRef);
+    const expiresAt = this.updating.get(imageRef);
+    if (!expiresAt) return status;
+    if (expiresAt <= Date.now()) {
+      this.updating.delete(imageRef);
+      return status;
+    }
+    return status ? { ...status, updating: true } : undefined;
+  }
+
+  markUpdating(imageRef: string): void {
+    this.updating.set(imageRef, Date.now() + UpdateChecker.updateGracePeriodMs);
+  }
+
+  clearUpdating(imageRef: string): void {
+    this.updating.delete(imageRef);
   }
 
   getLastCheckedAt(): string | undefined {
@@ -84,6 +102,10 @@ export class UpdateChecker {
       this.cache.set(imageRef, status);
       if (updateRef && updateRef !== imageRef) {
         this.cache.set(updateRef, status);
+      }
+      if (!status.hasUpdate) {
+        this.clearUpdating(imageRef);
+        if (updateRef) this.clearUpdating(updateRef);
       }
       return status;
     } catch (error) {

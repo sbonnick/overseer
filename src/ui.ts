@@ -519,7 +519,7 @@ export const page = String.raw`<!doctype html>
           + '</div>'
           + '<div class="cards">' + project.services
             .toSorted(function(a, b) {
-              return Number(Boolean(b.update?.hasUpdate)) - Number(Boolean(a.update?.hasUpdate));
+              return Number(Boolean(b.update?.hasUpdate || b.update?.updating)) - Number(Boolean(a.update?.hasUpdate || a.update?.updating));
             })
             .map(renderCard).join("") + '</div>'
         + '</article>';
@@ -583,6 +583,12 @@ export const page = String.raw`<!doctype html>
         var update = service.update;
         if (!update) {
           return '<div class="card-footer"><span class="subtle" style="font-size:12px">Checking...</span></div>';
+        }
+        if (update.updating) {
+          return '<div class="card-footer">'
+            + '<span class="update-badge">Updating image...</span>'
+            + '<button class="btn-update" disabled>Updating...</button>'
+          + '</div>';
         }
         if (update.error) {
           return '<div class="card-footer"><span class="subtle" style="font-size:12px" title="'
