@@ -77,7 +77,7 @@ export function startServer(): void {
           await resolveServiceImageNames(docker, projects);
           for (const project of projects) {
             for (const service of project.services) {
-              service.update = updates.getStatus(service.image);
+              service.update = updates.getStatus(service.image, service.id);
             }
           }
           return json({
@@ -146,7 +146,7 @@ export function startServer(): void {
         let imageRef: string | undefined;
         try {
           imageRef = await getUpdateImageRef(docker, decodeURIComponent(containerId));
-          updates.markUpdating(imageRef);
+          updates.markUpdating(imageRef, decodeURIComponent(containerId));
           const result = await applyUpdate(docker, updates, decodeURIComponent(containerId));
           if (result.retireContainerId) {
             const retireContainerId = result.retireContainerId;
