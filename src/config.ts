@@ -13,7 +13,7 @@ export type AppConfig = {
 
 const DEFAULT_SOCKET_PATH = "/var/run/docker.sock";
 const DEFAULT_COMPOSE_FILES_DIR = "~/project";
-const DEFAULT_POLL_INTERVAL_MS = 60000;
+const DEFAULT_POLL_INTERVAL_MS = 5000;
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
   const dockerHost = env.DOCKER_HOST?.trim();

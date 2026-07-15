@@ -371,12 +371,12 @@ export const page = String.raw`<!doctype html>
             : "Checking updates...", false);
           currentProjects = data.projects;
           render(currentProjects);
-          pollTimer = setTimeout(refresh, data.pollIntervalMs || 10000);
+          pollTimer = setTimeout(refresh, data.pollIntervalMs || 5000);
         } catch (error) {
           setStatus("Docker unavailable", false);
           projectsEl.innerHTML = '<div class="error"><h2>Unable to load projects</h2><p class="subtle">'
             + escapeHtml(error.message) + '</p></div>';
-          pollTimer = setTimeout(refresh, 10000);
+          pollTimer = setTimeout(refresh, 5000);
         } finally {
           isRefreshing = false;
           statusEl.disabled = false;
@@ -385,11 +385,69 @@ export const page = String.raw`<!doctype html>
 
       function render(items) {
         if (!items.length) {
-          projectsEl.innerHTML = '<div class="empty"><h2>No compose projects detected</h2>'
-            + '<p class="subtle">Containers need the standard Docker Compose project labels.</p></div>';
+          if (!projectsEl.querySelector(".empty")) {
+            projectsEl.innerHTML = '<div class="empty"><h2>No compose projects detected</h2>'
+              + '<p class="subtle">Containers need the standard Docker Compose project labels.</p></div>';
+          }
           return;
         }
-        projectsEl.innerHTML = items.map(renderProject).join("");
+
+        for (const child of Array.from(projectsEl.children)) {
+          if (!child.matches(".project")) child.remove();
+        }
+
+        const projectNames = new Set(items.map(function(project) { return project.name; }));
+        for (const projectEl of Array.from(projectsEl.querySelectorAll(".project"))) {
+          if (!projectNames.has(projectEl.dataset.project)) projectEl.remove();
+        }
+
+        for (const project of items) {
+          let projectEl = Array.from(projectsEl.querySelectorAll(".project")).find(function(element) {
+            return element.dataset.project === project.name;
+          });
+          if (!projectEl) {
+            projectEl = createElement(renderProject(project));
+            projectsEl.append(projectEl);
+            continue;
+          }
+          reconcileProject(projectEl, project);
+          projectsEl.append(projectEl);
+        }
+      }
+
+      function createElement(html) {
+        const template = document.createElement("template");
+        template.innerHTML = html;
+        return template.content.firstElementChild;
+      }
+
+      function reconcileProject(projectEl, project) {
+        const nextProject = createElement(renderProject(project));
+        const currentHead = projectEl.querySelector(":scope > .project-head");
+        const nextHead = nextProject.querySelector(":scope > .project-head");
+        if (currentHead.innerHTML !== nextHead.innerHTML) currentHead.replaceWith(nextHead);
+
+        const cards = projectEl.querySelector(":scope > .cards");
+        const nextCards = nextProject.querySelector(":scope > .cards");
+        const serviceIds = new Set(Array.from(nextCards.children).map(function(card) { return card.dataset.service; }));
+        for (const card of Array.from(cards.children)) {
+          if (!serviceIds.has(card.dataset.service)) card.remove();
+        }
+        for (const nextCard of Array.from(nextCards.children)) {
+          const currentCard = Array.from(cards.children).find(function(card) {
+            return card.dataset.service === nextCard.dataset.service;
+          });
+          if (!currentCard) {
+            cards.append(nextCard);
+          } else {
+            if (currentCard.innerHTML !== nextCard.innerHTML) {
+              currentCard.replaceWith(nextCard);
+              cards.append(nextCard);
+            } else {
+              cards.append(currentCard);
+            }
+          }
+        }
       }
 
       async function loadComposeFiles() {
@@ -500,7 +558,7 @@ export const page = String.raw`<!doctype html>
 
       function renderProject(project) {
         const refreshDisabled = Boolean(project.refreshDisabledReason);
-        return '<article class="project">'
+        return '<article class="project" data-project="' + escapeHtml(project.name) + '">'
           + '<div class="project-head">'
             + '<div><h2>' + escapeHtml(project.name) + '</h2>'
             + '<p class="subtle">' + escapeHtml(project.workingDir || "working directory unknown") + '</p></div>'
@@ -528,7 +586,7 @@ export const page = String.raw`<!doctype html>
       function renderCard(service) {
         const stateClass = service.state === "running" ? "running"
           : service.state === "exited" || service.state === "dead" ? "stopped" : "other";
-        return '<div class="card">'
+        return '<div class="card" data-service="' + escapeHtml(service.id) + '">'
           + '<div class="card-head">'
             + '<div class="service-title">' + renderServiceIcon(service)
             + '<div class="service-details"><div class="card-name">' + escapeHtml(service.name) + '</div>'
@@ -634,7 +692,7 @@ export const page = String.raw`<!doctype html>
           // Updating Overseer briefly disconnects the proxy before its replacement is ready.
           if (isTemporaryGatewayError(error)) {
             await waitForOverseer();
-            window.location.reload();
+            refresh();
             return;
           }
           btn.disabled = false;
@@ -663,7 +721,8 @@ export const page = String.raw`<!doctype html>
         } catch (error) {
           if (isTemporaryGatewayError(error)) {
             await waitForOverseer();
-            window.location.reload();
+            setRefreshOverlay(false);
+            refresh();
             return;
           }
           setRefreshOverlay(false);
