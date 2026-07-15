@@ -295,6 +295,7 @@ export const page = String.raw`<!doctype html>
       let showPorts = false;
       let showImage = false;
       let isRefreshing = false;
+      let updatesCheckedAt = null;
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
       const refreshIcon = '<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.23-6.36L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 15.23 6.36L21 16"></path><path d="M21 21v-5h-5"></path></svg>';
 
@@ -332,6 +333,12 @@ export const page = String.raw`<!doctype html>
         statusEl.innerHTML = refreshIcon + '<span>' + escapeHtml(message) + '</span>';
       }
 
+      function renderUpdateStatus() {
+        setStatus(updatesCheckedAt
+          ? "Updates checked " + formatSince(updatesCheckedAt)
+          : "Checking updates...", false);
+      }
+
       function formatSince(value) {
         const timestamp = new Date(value).getTime();
         if (!Number.isFinite(timestamp)) return "just now";
@@ -366,9 +373,8 @@ export const page = String.raw`<!doctype html>
           const response = await fetch("/api/projects");
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Request failed");
-          setStatus(data.updatesCheckedAt
-            ? "Updates checked " + formatSince(data.updatesCheckedAt)
-            : "Checking updates...", false);
+          if (data.updatesCheckedAt) updatesCheckedAt = data.updatesCheckedAt;
+          renderUpdateStatus();
           currentProjects = data.projects;
           render(currentProjects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 5000);
