@@ -60,6 +60,18 @@ Overseer lists all containers via the Docker Engine API and groups them by the `
 - `traefik.http.routers.*` — Traefik router rules, entrypoints, TLS, services
 - `traefik.http.services.*.loadbalancer.server.port` — backend port
 
+### Presentation labels
+
+Add these labels to a Compose service to customize its card without changing its Compose service name:
+
+```yaml
+labels:
+  - "overseer.name=Traefik Proxy"
+  - "overseer.icon=traefik.png"
+```
+
+`overseer.name` sets the displayed card name. `overseer.icon` selects a PNG filename from [Dashboard Icons](https://dashboardicons.com/), the icon library used by Overseer. For example, use `traefik.png` for the Traefik icon.
+
 ### Update checking
 
 For each compose-managed image, overseer:

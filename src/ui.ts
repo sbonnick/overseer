@@ -589,7 +589,7 @@ export const page = String.raw`<!doctype html>
         return '<div class="card" data-service="' + escapeHtml(service.id) + '">'
           + '<div class="card-head">'
             + '<div class="service-title">' + renderServiceIcon(service)
-            + '<div class="service-details"><div class="card-name">' + escapeHtml(service.name) + '</div>'
+            + '<div class="service-details"><div class="card-name">' + escapeHtml(service.displayName || service.name) + '</div>'
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
             + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
           + '</div>'
@@ -601,15 +601,15 @@ export const page = String.raw`<!doctype html>
       }
 
       function renderServiceIcon(service) {
-        const iconName = String(service.name).toLowerCase();
-        const baseUrl = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
+        const iconName = String(service.icon || service.name).toLowerCase();
+        const baseUrl = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/";
         const isOverseer = iconName === "overseer"
           || String(service.image).includes("sbonnick/overseer")
           || service.labels["io.sbonnick.overseer.self"] === "true";
         const iconUrl = isOverseer
           ? "/assets/overseer.svg"
-          : baseUrl + encodeURIComponent(iconName) + ".svg";
-        const fallbackUrl = baseUrl + "docker.svg";
+          : baseUrl + (service.icon ? "png/" + encodeURIComponent(iconName) : "svg/" + encodeURIComponent(iconName) + ".svg");
+        const fallbackUrl = baseUrl + "svg/docker.svg";
         return '<img class="service-icon" src="' + iconUrl + '" alt="" aria-hidden="true"'
           + ' onerror="this.onerror=null;this.src=\'' + fallbackUrl + '\'">';
       }

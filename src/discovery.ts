@@ -19,6 +19,8 @@ export type UpdateInfo = {
 export type ServiceInfo = {
   id: string;
   name: string;
+  displayName?: string;
+  icon?: string;
   image: string;
   state: string;
   status: string;
@@ -108,6 +110,8 @@ function toServiceInfo(
   return {
     id: container.Id,
     name,
+    displayName: labels["overseer.name"],
+    icon: labels["overseer.icon"],
     image,
     state: container.State,
     status: container.Status,
