@@ -24,6 +24,10 @@ export const page = String.raw`<!doctype html>
       }
 
       * { box-sizing: border-box; }
+      .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+      }
 
       body {
         margin: 0;
@@ -99,22 +103,37 @@ export const page = String.raw`<!doctype html>
       .editor-panel { min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
       .editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .editor-title { min-width: 0; word-break: break-all; }
+      .editor-actions, .editor-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .editor-tool {
+        min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+        background: #0d1117; color: var(--muted); font: inherit; font-size: 12px; font-weight: 650;
+        cursor: pointer;
+      }
+      .editor-tool:hover:not(:disabled), .editor-tool[aria-pressed="true"] {
+        border-color: var(--accent); color: #a5d6ff;
+      }
+      .editor-tool:disabled { opacity: 0.5; cursor: default; }
       .editor-wrap {
-        position: relative; min-height: min(62vh, 720px); border: 1px solid var(--line);
-        border-radius: 12px; overflow: auto; background: #05080d;
-        -webkit-overflow-scrolling: touch;
+        position: relative; height: clamp(320px, 62dvh, 720px); min-height: 0;
+        border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #05080d;
       }
       .highlight, .compose-textarea {
-        margin: 0; padding: 14px; min-height: min(62vh, 720px); width: 100%;
+        margin: 0; padding: 14px;
         font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-        tab-size: 2; white-space: pre; overflow: hidden;
+        tab-size: 2; white-space: pre;
       }
-      .highlight { pointer-events: none; color: #c9d1d9; }
+      .highlight {
+        position: absolute; top: 0; left: 0; min-width: 100%; min-height: 100%; width: max-content;
+        pointer-events: none; color: #c9d1d9; transform-origin: top left;
+      }
       .compose-textarea {
-        position: absolute; inset: 0; resize: none; border: 0; outline: 0;
+        position: absolute; inset: 0; width: 100%; height: 100%; resize: none; border: 0; outline: 0;
         background: transparent; color: transparent; caret-color: var(--text);
-        -webkit-text-fill-color: transparent;
+        -webkit-text-fill-color: transparent; overflow: auto; scrollbar-gutter: stable;
+        -webkit-overflow-scrolling: touch;
       }
+      .editor-wrap.wrap-lines .highlight { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .editor-wrap.wrap-lines .compose-textarea { white-space: pre-wrap; overflow-wrap: anywhere; }
       .yaml-key { color: #79c0ff; }
       .yaml-string { color: #a5d6ff; }
       .yaml-bool { color: #ff7b72; }
@@ -237,9 +256,23 @@ export const page = String.raw`<!doctype html>
         .project-actions { justify-content: flex-start; }
         .cards { grid-template-columns: 1fr; }
         .compose-editor { grid-template-columns: 1fr; }
-        .file-panel { border-right: 0; border-bottom: 1px solid var(--line); }
-        .file-list { grid-template-columns: 1fr; }
-        .editor-wrap, .highlight, .compose-textarea { min-height: 56vh; }
+        .file-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 12px; }
+        .file-list {
+          display: flex; gap: 8px; max-width: 100%; margin-top: 10px; padding-bottom: 4px;
+          overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+        }
+        .file-item { flex: 0 0 min(78vw, 280px); scroll-snap-align: start; }
+        .editor-panel { padding: 12px; }
+        .editor-head, .editor-actions { width: 100%; }
+        .editor-actions { justify-content: space-between; }
+        .editor-tools { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; }
+        .editor-tool, #saveFile { min-height: 44px; }
+        .editor-wrap { width: 100%; height: clamp(300px, 58dvh, 620px); }
+        .highlight { display: none; }
+        .compose-textarea {
+          color: var(--text); -webkit-text-fill-color: var(--text);
+          font-size: 16px; scrollbar-gutter: auto;
+        }
       }
     </style>
   </head>
@@ -271,14 +304,22 @@ export const page = String.raw`<!doctype html>
           <div class="editor-head">
             <div class="editor-title">
               <h2 id="editorTitle">Select a file</h2>
-              <p class="subtle" id="editorStatus">Mounted compose files can be edited and saved here.</p>
+              <p class="subtle" id="editorStatus" role="status" aria-live="polite">Mounted compose files can be edited and saved here.</p>
             </div>
-            <button class="btn" id="saveFile" type="button" disabled>Save</button>
+            <div class="editor-actions">
+              <div class="editor-tools" role="toolbar" aria-label="Compose editor tools">
+                <button class="editor-tool" type="button" data-editor-action="outdent" disabled>Outdent</button>
+                <button class="editor-tool" type="button" data-editor-action="indent" disabled>Indent</button>
+                <button class="editor-tool" id="wrapLines" type="button" aria-pressed="false" disabled>Wrap lines</button>
+              </div>
+              <button class="btn" id="saveFile" type="button" disabled>Save</button>
+            </div>
           </div>
           <div class="editor-wrap" id="editorWrap">
             <pre class="highlight" id="highlightedYaml" aria-hidden="true"></pre>
-            <textarea class="compose-textarea" id="composeTextarea" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea>
+            <textarea class="compose-textarea" id="composeTextarea" aria-label="Docker Compose YAML editor" aria-describedby="editorHelp" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea>
           </div>
+          <p class="sr-only" id="editorHelp">Tab indents. Press Escape, then Tab to move focus out of the editor.</p>
         </section>
       </section>
       <section class="projects" id="projects"></section>
@@ -304,6 +345,9 @@ export const page = String.raw`<!doctype html>
       const editorTitle = document.querySelector("#editorTitle");
       const editorStatus = document.querySelector("#editorStatus");
       const saveFile = document.querySelector("#saveFile");
+      const editorWrap = document.querySelector("#editorWrap");
+      const editorTools = document.querySelector(".editor-tools");
+      const wrapLines = document.querySelector("#wrapLines");
       const highlightedYaml = document.querySelector("#highlightedYaml");
       const composeTextarea = document.querySelector("#composeTextarea");
       let pollTimer = null;
@@ -314,6 +358,8 @@ export const page = String.raw`<!doctype html>
       let showImage = false;
       let isRefreshing = false;
       let updatesCheckedAt = null;
+      let tabMovesFocus = false;
+      const mobileEditorQuery = window.matchMedia("(max-width: 760px)");
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
       const refreshIcon = '<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.23-6.36L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 15.23 6.36L21 16"></path><path d="M21 21v-5h-5"></path></svg>';
 
@@ -516,6 +562,9 @@ export const page = String.raw`<!doctype html>
           lastSavedContent = data.file.content;
           editorTitle.textContent = data.file.path;
           composeTextarea.disabled = false;
+          Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
+            button.disabled = false;
+          });
           composeTextarea.value = data.file.content;
           renderHighlight();
           setDirty(false);
@@ -553,10 +602,86 @@ export const page = String.raw`<!doctype html>
       }
 
       function renderHighlight() {
+        if (mobileEditorQuery.matches) {
+          highlightedYaml.textContent = "";
+          return;
+        }
         highlightedYaml.innerHTML = highlightYaml(composeTextarea.value) || "\n";
-        const height = Math.max(composeTextarea.scrollHeight, highlightedYaml.scrollHeight, 320);
-        composeTextarea.style.height = height + "px";
-        highlightedYaml.style.height = height + "px";
+        highlightedYaml.style.width = editorWrap.classList.contains("wrap-lines")
+          ? composeTextarea.clientWidth + "px"
+          : "max-content";
+        syncHighlightScroll();
+      }
+
+      function syncHighlightScroll() {
+        highlightedYaml.style.transform = "translate(" + (-composeTextarea.scrollLeft) + "px, "
+          + (-composeTextarea.scrollTop) + "px)";
+      }
+
+      function setLineWrapping(enabled) {
+        editorWrap.classList.toggle("wrap-lines", enabled);
+        wrapLines.setAttribute("aria-pressed", String(enabled));
+        composeTextarea.setAttribute("wrap", enabled ? "soft" : "off");
+        renderHighlight();
+      }
+
+      function changeIndent(outdent) {
+        if (composeTextarea.disabled) return;
+        const value = composeTextarea.value;
+        const selectionStart = composeTextarea.selectionStart;
+        const selectionEnd = composeTextarea.selectionEnd;
+        const lineStart = value.lastIndexOf("\n", selectionStart - 1) + 1;
+
+        if (selectionStart === selectionEnd && !outdent) {
+          composeTextarea.setRangeText("  ", selectionStart, selectionEnd, "end");
+          composeTextarea.dispatchEvent(new Event("input"));
+          composeTextarea.focus();
+          return;
+        }
+
+        if (selectionStart === selectionEnd) {
+          const line = value.slice(lineStart);
+          const removed = line.startsWith("  ") ? 2 : line.startsWith(" ") ? 1 : 0;
+          if (removed) {
+            composeTextarea.setRangeText("", lineStart, lineStart + removed, "end");
+            const caret = Math.max(lineStart, selectionStart - removed);
+            composeTextarea.setSelectionRange(caret, caret);
+            composeTextarea.dispatchEvent(new Event("input"));
+          }
+          composeTextarea.focus();
+          return;
+        }
+
+        const selectedEnd = selectionEnd > selectionStart && value[selectionEnd - 1] === "\n"
+          ? selectionEnd - 1
+          : selectionEnd;
+        const nextLineBreak = value.indexOf("\n", selectedEnd);
+        const changeEnd = nextLineBreak < 0 ? value.length : nextLineBreak;
+        const selected = value.slice(lineStart, changeEnd);
+        const lines = selected.split("\n");
+        let firstRemoved = 0;
+        let totalRemoved = 0;
+
+        const changed = lines.map(function(line, index) {
+          if (!outdent) return "  " + line;
+          const removed = line.startsWith("  ") ? 2 : line.startsWith(" ") ? 1 : 0;
+          if (index === 0) firstRemoved = removed;
+          totalRemoved += removed;
+          return line.slice(removed);
+        }).join("\n");
+
+        composeTextarea.setRangeText(changed, lineStart, changeEnd, "select");
+        const firstLineAdjustment = Math.min(firstRemoved, selectionStart - lineStart);
+        const nextStart = outdent ? selectionStart - firstLineAdjustment : selectionStart + 2;
+        const nextEnd = outdent
+          ? selectionEnd - totalRemoved
+          : selectionEnd + lines.length * 2;
+        composeTextarea.setSelectionRange(
+          Math.max(lineStart, nextStart),
+          Math.max(lineStart, nextEnd)
+        );
+        composeTextarea.dispatchEvent(new Event("input"));
+        composeTextarea.focus();
       }
 
       function highlightYaml(value) {
@@ -575,9 +700,10 @@ export const page = String.raw`<!doctype html>
 
       function setDirty(isDirty) {
         saveFile.disabled = !currentFilePath || !isDirty;
-        editorStatus.textContent = currentFilePath
+        const message = currentFilePath
           ? (isDirty ? "Unsaved changes" : "Saved")
           : "Mounted compose files can be edited and saved here.";
+        if (editorStatus.textContent !== message) editorStatus.textContent = message;
       }
 
       function formatBytes(bytes) {
@@ -817,13 +943,38 @@ export const page = String.raw`<!doctype html>
         setDirty(composeTextarea.value !== lastSavedContent);
       });
 
+      composeTextarea.addEventListener("scroll", syncHighlightScroll);
+      composeTextarea.addEventListener("blur", function() {
+        tabMovesFocus = false;
+      });
+      window.addEventListener("resize", function() {
+        renderHighlight();
+      });
+
+      editorTools.addEventListener("click", function(e) {
+        const button = e.target.closest("button");
+        if (!button || button.disabled) return;
+        if (button === wrapLines) {
+          setLineWrapping(button.getAttribute("aria-pressed") !== "true");
+          return;
+        }
+        changeIndent(button.dataset.editorAction === "outdent");
+      });
+
       composeTextarea.addEventListener("keydown", function(e) {
+        if (e.key === "Escape") {
+          tabMovesFocus = true;
+          return;
+        }
         if (e.key === "Tab") {
+          if (tabMovesFocus) {
+            tabMovesFocus = false;
+            return;
+          }
           e.preventDefault();
-          const start = composeTextarea.selectionStart;
-          const end = composeTextarea.selectionEnd;
-          composeTextarea.setRangeText("  ", start, end, "end");
-          composeTextarea.dispatchEvent(new Event("input"));
+          changeIndent(e.shiftKey);
+        } else {
+          tabMovesFocus = false;
         }
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
           e.preventDefault();
@@ -839,6 +990,7 @@ export const page = String.raw`<!doctype html>
         });
       }
 
+      if (mobileEditorQuery.matches) setLineWrapping(true);
       refresh();
     </script>
   </body>

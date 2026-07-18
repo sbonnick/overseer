@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts",
+    "test": "bun test",
     "check": "bunx biome check . && bunx tsc --noEmit",
     "format": "bunx biome format --write .",
     "lint": "bunx biome lint ."
