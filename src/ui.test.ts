@@ -19,8 +19,9 @@ describe("compose editor", () => {
     expect(page).toContain('data-editor-action="outdent"');
     expect(page).toContain('data-editor-action="indent"');
     expect(page).toContain('id="wrapLines"');
+    expect(page).toContain('wrap="off"');
     expect(page).toContain("font-size: 16px");
-    expect(page).toContain("if (mobileEditorQuery.matches) setLineWrapping(true)");
+    expect(page).not.toContain("setLineWrapping(true)");
   });
 
   test("highlights YAML and JSON", () => {
