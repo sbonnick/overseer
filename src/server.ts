@@ -23,6 +23,7 @@ export function startServer(): void {
   const config = loadConfig();
   const docker = new DockerClient(config.docker);
   const updates = new UpdateChecker(docker, config.updateCheckIntervalMs);
+  let dockerMutationActive = false;
 
   updates.start();
 
@@ -89,7 +90,8 @@ export function startServer(): void {
           await resolveServiceImageNames(docker, projects);
           for (const project of projects) {
             for (const service of project.services) {
-              service.update = updates.getStatus(service.image, service.id);
+              service.isSelf = isCurrentService(service.id, service.labels);
+              service.update = updates.getStatus(service.image, service.id, service.imageId);
             }
           }
           return json({
@@ -155,32 +157,51 @@ export function startServer(): void {
         if (!containerId) {
           return json({ error: "Invalid container ID" }, 400);
         }
+        if (dockerMutationActive) {
+          return json({ error: "Another container operation is already in progress" }, 409);
+        }
+        dockerMutationActive = true;
+        let deferredMutation = false;
         let imageRef: string | undefined;
         try {
           imageRef = await getUpdateImageRef(docker, decodeURIComponent(containerId));
           updates.markUpdating(imageRef, decodeURIComponent(containerId));
           const result = await applyUpdate(docker, updates, decodeURIComponent(containerId));
           if (result.retireContainerId) {
+            deferredMutation = true;
             const retireContainerId = result.retireContainerId;
             // Send the success response before removing the process handling this request.
             setTimeout(() => {
-              docker.removeContainer(retireContainerId, { force: true }).catch((error) => {
-                console.error("[updates] failed to remove replaced Overseer container:", error);
-              });
+              docker
+                .removeContainer(retireContainerId, { force: true })
+                .catch((error) => {
+                  console.error("[updates] failed to remove replaced Overseer container:", error);
+                })
+                .finally(() => {
+                  dockerMutationActive = false;
+                });
             }, 250);
           }
           if (result.restartContainerId) {
+            deferredMutation = true;
             const restartContainerId = result.restartContainerId;
             setTimeout(() => {
-              docker.restartContainer(restartContainerId).catch((error) => {
-                console.error("[updates] failed to restart Overseer container:", error);
-              });
+              docker
+                .restartContainer(restartContainerId)
+                .catch((error) => {
+                  console.error("[updates] failed to restart Overseer container:", error);
+                })
+                .finally(() => {
+                  dockerMutationActive = false;
+                });
             }, 250);
           }
           return json(result);
         } catch (error) {
           if (imageRef) updates.clearUpdating(imageRef);
           return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+        } finally {
+          if (!deferredMutation) dockerMutationActive = false;
         }
       }
 
@@ -190,11 +211,17 @@ export function startServer(): void {
         if (!projectName) {
           return json({ error: "Invalid project name" }, 400);
         }
+        if (dockerMutationActive) {
+          return json({ error: "Another container operation is already in progress" }, 409);
+        }
+        dockerMutationActive = true;
         try {
           const result = await refreshProject(docker, decodeURIComponent(projectName));
           return json(result);
         } catch (error) {
           return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+        } finally {
+          dockerMutationActive = false;
         }
       }
 
@@ -332,10 +359,14 @@ function resolveReadableImageRef(imageRef: string, repoTags: string[] | undefine
 function isCurrentContainer(
   container: Awaited<ReturnType<DockerClient["inspectContainer"]>>,
 ): boolean {
+  return isCurrentService(container.Id, container.Config.Labels ?? {});
+}
+
+function isCurrentService(containerId: string, labels: Record<string, string>): boolean {
   const hostname = Bun.env.HOSTNAME;
   return (
-    container.Config.Labels?.["io.sbonnick.overseer.self"] === "true" ||
-    (hostname !== undefined && hostname.length > 0 && container.Id.startsWith(hostname))
+    labels["io.sbonnick.overseer.self"] === "true" ||
+    (hostname !== undefined && hostname.length > 0 && containerId.startsWith(hostname))
   );
 }
 

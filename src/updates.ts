@@ -6,6 +6,7 @@ export type UpdateStatus = {
   updating?: boolean;
   remoteDigest?: string;
   localDigest?: string;
+  localImageId?: string;
   checkedAt: string;
   error?: string;
 };
@@ -35,12 +36,24 @@ export class UpdateChecker {
     if (this.timer) clearInterval(this.timer);
   }
 
-  getStatus(imageRef: string, containerId?: string): UpdateStatus | undefined {
+  getStatus(
+    imageRef: string,
+    containerId?: string,
+    containerImageId?: string,
+  ): UpdateStatus | undefined {
     const status = this.cache.get(imageRef);
     const updating =
       this.isUpdating(`image:${imageRef}`) ||
       (containerId !== undefined && this.isUpdating(`container:${containerId}`));
-    return updating && status ? { ...status, updating: true } : status;
+    if (!status) return undefined;
+    const containerHasOlderImage = Boolean(
+      containerImageId && status.localImageId && containerImageId !== status.localImageId,
+    );
+    return {
+      ...status,
+      hasUpdate: status.hasUpdate || containerHasOlderImage,
+      ...(updating ? { updating: true } : {}),
+    };
   }
 
   markUpdating(imageRef: string, containerId: string): void {
@@ -84,20 +97,23 @@ export class UpdateChecker {
   }
 
   async checkOne(imageRef: string): Promise<UpdateStatus> {
+    let localImageId: string | undefined;
     try {
       const imageInfo = await this.docker.inspectImage(imageRef);
+      localImageId = imageInfo.Id;
       const updateRef = resolveUpdateImageRef(imageRef, imageInfo.RepoTags);
       const parsed = updateRef ? parseImageRef(updateRef) : null;
 
       let status: UpdateStatus;
 
       if (!parsed || parsed.digest) {
-        status = { hasUpdate: false, checkedAt: new Date().toISOString() };
+        status = { hasUpdate: false, localImageId, checkedAt: new Date().toISOString() };
       } else {
         const localDigest = getLocalDigest(imageInfo.RepoDigests);
         const remoteDigest = await getRemoteDigest(parsed);
         status = {
           hasUpdate: hasUpdate(imageInfo.RepoDigests, remoteDigest),
+          localImageId,
           remoteDigest: remoteDigest ?? undefined,
           localDigest: localDigest ?? undefined,
           checkedAt: new Date().toISOString(),
@@ -116,6 +132,7 @@ export class UpdateChecker {
     } catch (error) {
       const status: UpdateStatus = {
         hasUpdate: false,
+        localImageId,
         checkedAt: new Date().toISOString(),
         error: error instanceof Error ? error.message : "Unknown error",
       };

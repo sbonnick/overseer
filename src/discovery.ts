@@ -12,6 +12,8 @@ export type RouteInfo = {
 
 export type UpdateInfo = {
   hasUpdate: boolean;
+  updating?: boolean;
+  localImageId?: string;
   checkedAt?: string;
   error?: string;
 };
@@ -22,6 +24,7 @@ export type ServiceInfo = {
   displayName?: string;
   icon?: string;
   image: string;
+  imageId: string;
   state: string;
   status: string;
   role: string;
@@ -29,6 +32,7 @@ export type ServiceInfo = {
   ports: string[];
   routes: RouteInfo[];
   labels: Record<string, string>;
+  isSelf?: boolean;
   update?: UpdateInfo;
 };
 
@@ -113,6 +117,7 @@ function toServiceInfo(
     displayName: labels["overseer.name"],
     icon: labels["overseer.icon"],
     image,
+    imageId: container.ImageID,
     state: container.State,
     status: container.Status,
     role,

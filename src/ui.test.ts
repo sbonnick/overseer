@@ -30,6 +30,13 @@ describe("compose editor", () => {
     expect(page).toContain('class="syntax-number"');
   });
 
+  test("updates all eligible project services sequentially", () => {
+    expect(page).toContain('class="btn btn-update-project"');
+    expect(page).toContain("function updateProjectServices(projectName)");
+    expect(page).toContain("for (const service of services)");
+    expect(page).toContain("Number(Boolean(a.isSelf)) - Number(Boolean(b.isSelf))");
+  });
+
   test("contains valid editor script syntax", () => {
     const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeDefined();

@@ -396,6 +396,7 @@ export const page = String.raw`<!doctype html>
       let showImage = false;
       let isRefreshing = false;
       let isSaving = false;
+      const bulkUpdateProjects = new Map();
       let updatesCheckedAt = null;
       let tabMovesFocus = false;
       const mobileEditorQuery = window.matchMedia("(max-width: 760px)");
@@ -418,17 +419,23 @@ export const page = String.raw`<!doctype html>
       }
 
       async function waitForOverseer() {
-        while (true) {
+        const deadline = Date.now() + 60000;
+        while (Date.now() < deadline) {
           try {
-            const response = await fetch("/api/health", { cache: "no-store" });
-            if (response.ok) return;
+            const response = await fetch("/api/health", {
+              cache: "no-store",
+              signal: AbortSignal.timeout(5000)
+            });
+            if (response.ok) return true;
           } catch {}
           await new Promise(function(resolve) { setTimeout(resolve, 1000); });
         }
+        return false;
       }
 
       function isTemporaryGatewayError(error) {
-        return error instanceof TypeError || [502, 503, 504].includes(error.status);
+        return error instanceof TypeError || error.name === "TimeoutError"
+          || [502, 503, 504].includes(error.status);
       }
 
       function setStatus(message, refreshing) {
@@ -474,12 +481,15 @@ export const page = String.raw`<!doctype html>
         setStatus(checkForUpdates ? "Checking updates..." : "Refreshing...", true);
         try {
           if (checkForUpdates) {
-            const checkResponse = await fetch("/api/updates/check", { method: "POST" });
+            const checkResponse = await fetch("/api/updates/check", {
+              method: "POST",
+              signal: AbortSignal.timeout(60000)
+            });
             const checkData = await readJson(checkResponse);
             if (!checkResponse.ok) throw new Error(checkData.error || "Update check failed");
             if (checkData.updatesCheckedAt) updatesCheckedAt = checkData.updatesCheckedAt;
           }
-          const response = await fetch("/api/projects");
+          const response = await fetch("/api/projects", { signal: AbortSignal.timeout(30000) });
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Request failed");
           if (data.updatesCheckedAt) updatesCheckedAt = data.updatesCheckedAt;
@@ -851,14 +861,27 @@ export const page = String.raw`<!doctype html>
 
       function renderProject(project) {
         const refreshDisabled = Boolean(project.refreshDisabledReason);
+        const availableUpdates = project.services.filter(function(service) {
+          return service.update?.hasUpdate && !service.update?.updating;
+        }).length;
+        const bulkUpdate = bulkUpdateProjects.get(project.name);
+        const anyBulkUpdate = bulkUpdateProjects.size > 0;
+        const bulkLabel = bulkUpdate
+          ? "Updating " + bulkUpdate.completed + "/" + bulkUpdate.total
+          : availableUpdates ? "Update all (" + availableUpdates + ")" : "All up to date";
         return '<article class="project" data-project="' + escapeHtml(project.name) + '">'
           + '<div class="project-head">'
             + '<div><h2>' + escapeHtml(project.name) + '</h2>'
             + '<p class="subtle">' + escapeHtml(project.workingDir || "working directory unknown") + '</p></div>'
             + '<div class="project-actions">'
+              + '<button class="btn btn-update-project" type="button" data-project="'
+                + escapeHtml(project.name) + '"'
+                + (!availableUpdates || anyBulkUpdate ? ' disabled' : '')
+                + ' title="Update every container in this project with an available image update">'
+                + escapeHtml(bulkLabel) + '</button>'
               + '<button class="btn btn-refresh-project" type="button" data-project="'
                 + escapeHtml(project.name) + '"'
-                + (refreshDisabled ? ' disabled title="' + escapeHtml(project.refreshDisabledReason) + '"' : ' title="Apply saved compose file changes by running docker compose up for this project"')
+                + (refreshDisabled || anyBulkUpdate ? ' disabled title="' + escapeHtml(project.refreshDisabledReason || "Updates are in progress") + '"' : ' title="Apply saved compose file changes by running docker compose up for this project"')
                 + '>Apply compose changes</button>'
               + '<div class="stats">'
                 + '<span class="pill">' + project.runningCount + "/" + project.serviceCount + ' running</span>'
@@ -872,11 +895,11 @@ export const page = String.raw`<!doctype html>
             .toSorted(function(a, b) {
               return Number(Boolean(b.update?.hasUpdate || b.update?.updating)) - Number(Boolean(a.update?.hasUpdate || a.update?.updating));
             })
-            .map(renderCard).join("") + '</div>'
+            .map(function(service) { return renderCard(service, anyBulkUpdate); }).join("") + '</div>'
         + '</article>';
       }
 
-      function renderCard(service) {
+      function renderCard(service, bulkUpdating) {
         const stateClass = service.state === "running" ? "running"
           : service.state === "exited" || service.state === "dead" ? "stopped" : "other";
         return '<div class="card" data-service="' + escapeHtml(service.id) + '">'
@@ -889,7 +912,7 @@ export const page = String.raw`<!doctype html>
           + (showImage ? '<div class="card-image">' + escapeHtml(service.image) + '</div>' : "")
           + renderUrls(service.routes)
           + (showPorts ? renderPorts(service.ports) : "")
-          + renderFooter(service)
+          + renderFooter(service, bulkUpdating)
         + '</div>';
       }
 
@@ -946,7 +969,7 @@ export const page = String.raw`<!doctype html>
         }).join("") + '</div>';
       }
 
-      function renderFooter(service) {
+      function renderFooter(service, bulkUpdating) {
         var update = service.update;
         if (!update) {
           return '<div class="card-footer"><span class="subtle" style="font-size:12px">Checking...</span></div>';
@@ -965,50 +988,153 @@ export const page = String.raw`<!doctype html>
           return '<div class="card-footer">'
             + '<span class="update-badge">Update available</span>'
             + '<button class="btn-update" data-id="' + escapeHtml(service.id) + '" data-image="'
-              + escapeHtml(service.image) + '" title="Pull this service image and recreate/restart only this container; compose file changes are not applied">Update image</button>'
+              + escapeHtml(service.image) + '"'
+              + (bulkUpdating ? ' disabled' : '')
+              + ' title="Pull this service image and recreate/restart only this container; compose file changes are not applied">Update image</button>'
           + '</div>';
         }
         return '<div class="card-footer"><span class="update-badge up-to-date">Up to date</span></div>';
       }
 
       projectsEl.addEventListener("click", async function(e) {
+        const updateProjectBtn = e.target.closest(".btn-update-project");
+        if (updateProjectBtn && !updateProjectBtn.disabled) {
+          await updateProjectServices(updateProjectBtn.dataset.project);
+          return;
+        }
+
         const refreshBtn = e.target.closest(".btn-refresh-project");
-        if (refreshBtn && !refreshBtn.disabled) {
+        if (refreshBtn && !refreshBtn.disabled && !bulkUpdateProjects.size) {
           await refreshProject(refreshBtn);
           return;
         }
 
         const btn = e.target.closest(".btn-update");
-        if (!btn || btn.disabled) return;
-        const id = btn.dataset.id;
-        const image = btn.dataset.image;
+        if (!btn || btn.disabled || bulkUpdateProjects.size) return;
+        const service = currentProjects.flatMap(function(project) { return project.services; })
+          .find(function(item) { return item.id === btn.dataset.id; });
+        if (!service) return;
         btn.disabled = true;
         btn.textContent = "Updating...";
 
         try {
-          const response = await fetch("/api/services/" + id + "/update", { method: "POST" });
-          const data = await readJson(response);
-          if (!response.ok) {
-            const error = new Error(data.error || "Update failed");
-            error.status = response.status;
-            throw error;
-          }
+          const data = await updateService(service);
           btn.textContent = "Updated";
           btn.classList.add("success");
+          if (service.isSelf && (data.retireContainerId || data.restartContainerId)) {
+            await new Promise(function(resolve) { setTimeout(resolve, 500); });
+            if (!await waitForOverseer()) throw new Error("Overseer did not become ready after updating");
+          }
           if (pollTimer) clearTimeout(pollTimer);
           refresh();
         } catch (error) {
           // Updating Overseer briefly disconnects the proxy before its replacement is ready.
-          if (isTemporaryGatewayError(error)) {
-            await waitForOverseer();
-            refresh();
-            return;
+          if (service.isSelf && isTemporaryGatewayError(error)) {
+            if (await waitForOverseer()) {
+              refresh();
+              return;
+            }
+            error = new Error("Overseer did not become ready after updating");
           }
           btn.disabled = false;
           btn.textContent = "Update image";
-          alert("Update failed for " + image + ":\n" + error.message);
+          alert("Update failed for " + service.image + ":\n" + error.message);
         }
       });
+
+      async function updateService(service) {
+        const response = await fetch("/api/services/" + encodeURIComponent(service.id) + "/update", {
+          method: "POST",
+          signal: AbortSignal.timeout(5 * 60 * 1000)
+        });
+        const data = await readJson(response);
+        if (!response.ok) {
+          const error = new Error(data.error || "Update failed");
+          error.status = response.status;
+          throw error;
+        }
+        return data;
+      }
+
+      async function updateServiceWhenAvailable(service) {
+        const deadline = Date.now() + 5 * 60 * 1000;
+        while (true) {
+          try {
+            return await updateService(service);
+          } catch (error) {
+            if (error.status !== 409 || Date.now() >= deadline) throw error;
+            await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+          }
+        }
+      }
+
+      async function updateProjectServices(projectName) {
+        const project = currentProjects.find(function(item) { return item.name === projectName; });
+        if (!project || bulkUpdateProjects.size) return;
+        const services = project.services
+          .filter(function(service) { return service.update?.hasUpdate && !service.update?.updating; })
+          .toSorted(function(a, b) { return Number(Boolean(a.isSelf)) - Number(Boolean(b.isSelf)); });
+        if (!services.length) return;
+
+        if (pollTimer) clearTimeout(pollTimer);
+        const progress = { completed: 0, total: services.length };
+        const failures = [];
+        const unconfirmed = [];
+        let refreshError = "";
+        bulkUpdateProjects.set(projectName, progress);
+        render(currentProjects);
+
+        for (const service of services) {
+          try {
+            const data = await updateServiceWhenAvailable(service);
+            if (service.isSelf && (data.retireContainerId || data.restartContainerId)) {
+              await new Promise(function(resolve) { setTimeout(resolve, 500); });
+              if (!await waitForOverseer()) {
+                const error = new Error("Overseer did not become ready after updating");
+                error.uncertain = true;
+                throw error;
+              }
+            }
+          } catch (error) {
+            if (error.uncertain || isTemporaryGatewayError(error)) {
+              const ready = service.isSelf ? await waitForOverseer() : true;
+              unconfirmed.push({
+                service,
+                error: new Error(ready
+                  ? "Update result could not be confirmed"
+                  : "Overseer did not become ready after updating")
+              });
+            } else {
+              failures.push({ service, error });
+            }
+          }
+          progress.completed += 1;
+          render(currentProjects);
+        }
+
+        bulkUpdateProjects.delete(projectName);
+        const refreshDeadline = Date.now() + 35000;
+        while (isRefreshing && Date.now() < refreshDeadline) {
+          await new Promise(function(resolve) { setTimeout(resolve, 100); });
+        }
+        if (isRefreshing) {
+          refreshError = "Project status refresh timed out.";
+        }
+        if (pollTimer) clearTimeout(pollTimer);
+        if (!isRefreshing) await refresh();
+        if (failures.length || unconfirmed.length || refreshError) {
+          const confirmed = services.length - failures.length - unconfirmed.length;
+          alert("Confirmed " + confirmed + " of " + services.length + " container updates."
+            + (unconfirmed.length ? " Unconfirmed:\n" : "\n")
+            + unconfirmed.map(function(result) {
+              return (result.service.displayName || result.service.name) + ": " + result.error.message;
+            }).join("\n")
+            + (failures.length ? (unconfirmed.length ? "\nFailed:\n" : "Failed:\n") : "")
+            + failures.map(function(failure) {
+              return (failure.service.displayName || failure.service.name) + ": " + failure.error.message;
+            }).join("\n") + (refreshError ? "\n" + refreshError : ""));
+        }
+      }
 
       async function refreshProject(btn) {
         const project = btn.dataset.project;
@@ -1029,10 +1155,12 @@ export const page = String.raw`<!doctype html>
           refresh();
         } catch (error) {
           if (isTemporaryGatewayError(error)) {
-            await waitForOverseer();
-            setRefreshOverlay(false);
-            refresh();
-            return;
+            if (await waitForOverseer()) {
+              setRefreshOverlay(false);
+              refresh();
+              return;
+            }
+            error = new Error("Overseer did not become ready after applying compose changes");
           }
           setRefreshOverlay(false);
           btn.disabled = false;
