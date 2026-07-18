@@ -641,26 +641,29 @@ export const page = String.raw`<!doctype html>
 
       function renderUrls(routes) {
         if (!routes.length) return '<div class="subtle" style="font-size:13px">No Traefik routes</div>';
-        const links = routes.map(function(route) {
-          const validHosts = route.hostnames.map(function(host) {
-            return { host: host, url: routeUrl(host, route.tls) };
-          }).filter(function(item) { return item.url; });
-          if (validHosts.length) {
-            const items = validHosts.map(function(item) {
-              return '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">'
-                + escapeHtml(item.host) + '</a>';
-            }).join("<br>");
-            return '<div class="url">' + items + '</div>';
-          }
-          return '<div class="url"><code>' + escapeHtml(route.rule || "no rule") + '</code></div>';
-        }).join("");
+        const links = routes.flatMap(function(route) {
+          return route.hostnames.map(function(host) {
+            const url = routeUrl(host, route.tls);
+            if (!url) return "";
+            return '<div class="url"><a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">'
+              + escapeHtml(host) + '</a></div>';
+          });
+        }).filter(Boolean).join("");
+        if (!links) return '<div class="subtle" style="font-size:13px">No valid Traefik routes</div>';
         return '<div class="urls">' + links + '</div>';
       }
 
       function routeUrl(host, tls) {
         try {
+          if (host !== host.trim()) return null;
           const url = new URL((tls ? "https" : "http") + "://" + host);
-          if (!url.hostname || url.hostname.includes("*") || url.username || url.password
+          const hostname = url.hostname;
+          const validHostname = hostname === "localhost"
+            || (hostname.startsWith("[") && hostname.endsWith("]"))
+            || hostname.split(".").every(function(label) {
+              return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label);
+            });
+          if (!hostname || !validHostname || url.username || url.password
             || url.pathname !== "/" || url.search || url.hash) return null;
           return url.href;
         } catch {
