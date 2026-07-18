@@ -6,7 +6,7 @@ A lite Docker Compose project manager designed to be deployed alongside your Tra
 
 - **Auto-discovery** — Detects compose projects, services, and Traefik routes from standard Docker labels (`com.docker.compose.*`, `traefik.http.routers.*`).
 - **Card UI** — Each service renders as a card showing state, exposed URLs, ports, and update status.
-- **Compose file editor** — Mount Compose YAML files into the configured project folder and edit them in-browser with YAML highlighting, line wrapping, and touch-friendly controls.
+- **Compose file editor** — Edit Compose YAML and JSON files in a full-screen, syntax-highlighted workspace with line wrapping and touch-friendly controls.
 - **Update checking** — Compares local image digests against registry manifests daily. Supports Docker Hub, GHCR, and any OCI-compatible registry with Bearer auth.
 - **One-click updates** — Pull the latest image and recreate the container, preserving all compose configuration.
 - **Socket or HTTP proxy** — Connect to the Docker daemon via `/var/run/docker.sock` or an HTTP proxy URL.
@@ -46,7 +46,7 @@ All settings are via environment variables:
 | `POLL_INTERVAL_MS` | `5000` | UI refresh interval in milliseconds |
 | `UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | How often to check registries for image updates |
 | `COMPOSE_PROJECT` | — | Filter to a single compose project name |
-| `COMPOSE_FILES_DIR` | `~/project` | Directory searched recursively for Docker Compose YAML files editable in the UI |
+| `COMPOSE_FILES_DIR` | `~/project` | Directory searched recursively for Docker Compose YAML and JSON files editable in the UI |
 
 ## How it works
 

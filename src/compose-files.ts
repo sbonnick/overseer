@@ -13,7 +13,7 @@ export type ComposeFileContent = ComposeFileSummary & {
   content: string;
 };
 
-const COMPOSE_FILE_MATCH = /(^|[-_.])(docker-)?compose[-_.]?[^/]*\.ya?ml$/i;
+const COMPOSE_FILE_MATCH = /(^|[-_.])(docker-)?compose(?:[-_.][^/]*)?\.(?:ya?ml|json)$/i;
 const MAX_FILE_BYTES = 1024 * 1024;
 
 export async function listComposeFiles(rootDir: string): Promise<ComposeFileSummary[]> {
@@ -101,7 +101,7 @@ async function assertComposeFile(root: string, filePath: string): Promise<void> 
     throw new Error("File path is outside the compose files directory");
   }
   if (!isComposeFile(path.basename(filePath))) {
-    throw new Error("Only Docker Compose YAML files can be edited");
+    throw new Error("Only Docker Compose YAML or JSON files can be edited");
   }
 
   const stats = await stat(filePath);

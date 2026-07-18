@@ -71,6 +71,8 @@ export const page = String.raw`<!doctype html>
       }
       .btn:hover:not(:disabled), .btn.active, .toggle:hover { border-color: var(--accent); color: #a5d6ff; }
       .btn:disabled { opacity: 0.5; cursor: default; }
+      .editor-launch { display: inline-grid; place-items: center; width: 38px; height: 38px; padding: 0; }
+      .editor-launch svg { width: 19px; height: 19px; }
       .toggle { display: inline-flex; align-items: center; gap: 8px; }
       .toggle-track {
         position: relative; width: 30px; height: 18px; flex: 0 0 30px;
@@ -85,14 +87,27 @@ export const page = String.raw`<!doctype html>
       .toggle[aria-checked="true"] .toggle-track { border-color: var(--accent); background: var(--accent); }
       .toggle[aria-checked="true"] .toggle-track::after { background: white; transform: translateX(12px); }
 
+      body.editor-open { overflow: hidden; }
       .compose-editor {
-        display: none; grid-template-columns: 280px minmax(0, 1fr); gap: 18px;
-        border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
-        background: color-mix(in srgb, var(--panel), transparent 8%);
-        box-shadow: 0 24px 80px rgb(0 0 0 / 24%); margin-bottom: 24px;
+        --editor-bar-height: 64px;
+        position: fixed; inset: 0; z-index: 20; display: none;
+        grid-template-rows: var(--editor-bar-height) minmax(0, 1fr);
+        background: #05080d;
       }
       .compose-editor.open { display: grid; }
-      .file-panel { border-right: 1px solid var(--line); padding: 16px; min-width: 0; }
+      .file-panel {
+        position: absolute; z-index: 3; top: var(--editor-bar-height); bottom: 0; left: 0;
+        width: min(360px, calc(100vw - 48px)); padding: 18px; overflow-y: auto;
+        border-right: 1px solid var(--line); background: var(--panel);
+        box-shadow: 24px 0 70px rgb(0 0 0 / 35%); transform: translateX(-105%);
+        transition: transform 0.18s ease;
+      }
+      .compose-editor.files-open .file-panel { transform: translateX(0); }
+      .file-backdrop {
+        position: absolute; z-index: 2; inset: var(--editor-bar-height) 0 0; display: none;
+        border: 0; background: rgb(0 0 0 / 55%); cursor: default;
+      }
+      .compose-editor.files-open .file-backdrop { display: block; }
       .file-list { display: grid; gap: 8px; margin-top: 14px; }
       .file-item {
         border: 1px solid var(--line); background: #0d1117; color: var(--text);
@@ -100,22 +115,30 @@ export const page = String.raw`<!doctype html>
         font: inherit; font-size: 13px; word-break: break-all;
       }
       .file-item.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 88%); }
-      .editor-panel { min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-      .editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      .editor-title { min-width: 0; word-break: break-all; }
-      .editor-actions, .editor-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .editor-panel { grid-row: 2; min-width: 0; min-height: 0; }
+      .editor-head {
+        grid-row: 1; z-index: 4; display: flex; align-items: center; gap: 10px;
+        min-width: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel);
+        box-shadow: 0 8px 30px rgb(0 0 0 / 24%); overflow-x: auto;
+      }
+      .editor-title { flex: 1 1 auto; min-width: 0; text-align: center; }
+      .editor-title h2 { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+      .editor-title p { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .editor-actions, .editor-tools { display: flex; align-items: center; gap: 6px; }
+      .editor-actions { flex: 0 0 auto; }
       .editor-tool {
-        min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
-        background: #0d1117; color: var(--muted); font: inherit; font-size: 12px; font-weight: 650;
-        cursor: pointer;
+        display: inline-grid; place-items: center; width: 42px; height: 42px; padding: 0;
+        border: 1px solid var(--line); border-radius: 9px; background: #0d1117;
+        color: var(--muted); cursor: pointer;
       }
       .editor-tool:hover:not(:disabled), .editor-tool[aria-pressed="true"] {
         border-color: var(--accent); color: #a5d6ff;
       }
       .editor-tool:disabled { opacity: 0.5; cursor: default; }
+      .editor-tool.primary { border-color: var(--accent); color: #a5d6ff; }
+      .editor-tool svg { width: 20px; height: 20px; }
       .editor-wrap {
-        position: relative; height: clamp(320px, 62dvh, 720px); min-height: 0;
-        border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #05080d;
+        position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: #05080d;
       }
       .highlight, .compose-textarea {
         margin: 0; padding: 14px;
@@ -139,6 +162,7 @@ export const page = String.raw`<!doctype html>
       .yaml-bool { color: #ff7b72; }
       .yaml-comment { color: #8b949e; }
       .yaml-var { color: #d2a8ff; }
+      .syntax-number { color: #ffa657; }
 
       .projects { display: grid; gap: 24px; }
 
@@ -251,34 +275,26 @@ export const page = String.raw`<!doctype html>
       @keyframes spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 760px) {
-        header, .project-head, .editor-head { flex-direction: column; align-items: start; }
+        header, .project-head { flex-direction: column; align-items: start; }
         .top-actions { width: 100%; justify-content: flex-start; overflow-x: auto; padding-bottom: 4px; }
         .project-actions { justify-content: flex-start; }
         .cards { grid-template-columns: 1fr; }
-        .compose-editor { grid-template-columns: 1fr; }
-        .file-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 12px; }
-        .file-list {
-          display: flex; gap: 8px; max-width: 100%; margin-top: 10px; padding-bottom: 4px;
-          overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
-        }
-        .file-item { flex: 0 0 min(78vw, 280px); scroll-snap-align: start; }
-        .editor-panel { padding: 12px; }
-        .editor-head, .editor-actions { width: 100%; }
-        .editor-actions { justify-content: space-between; }
-        .editor-tools { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; }
-        .editor-tool, #saveFile { min-height: 44px; }
-        .editor-wrap { width: 100%; height: clamp(300px, 58dvh, 620px); }
-        .highlight { display: none; }
-        .compose-textarea {
-          color: var(--text); -webkit-text-fill-color: var(--text);
-          font-size: 16px; scrollbar-gutter: auto;
-        }
+        .compose-editor { --editor-bar-height: 60px; }
+        .editor-head { gap: 5px; padding: 8px; }
+        .editor-title p { display: none; }
+        .editor-tools { gap: 4px; }
+        .editor-tool { width: 42px; height: 42px; }
+        .highlight, .compose-textarea { font-size: 16px; }
+        .compose-textarea { scrollbar-gutter: auto; }
+      }
+      @media (max-width: 520px) {
+        .editor-title { display: none; }
       }
     </style>
   </head>
   <body>
     <main>
-      <header>
+      <header id="pageHeader">
         <div>
           <h1><img class="app-icon" src="/assets/overseer.svg" alt="" />Overseer</h1>
           <p class="subtle">Lite Docker Compose project manager for Traefik-backed stacks.</p>
@@ -291,33 +307,50 @@ export const page = String.raw`<!doctype html>
           <button class="toggle" id="imageToggle" type="button" role="switch" aria-checked="false">
             <span>Image</span><span class="toggle-track" aria-hidden="true"></span>
           </button>
-          <button class="btn" id="filesToggle" type="button" aria-controls="composeEditor" aria-expanded="false">Compose files</button>
+          <button class="btn editor-launch" id="filesToggle" type="button" aria-label="Open compose editor" title="Open compose editor" aria-controls="composeEditor" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m9 15 2 2 4-4"></path></svg>
+          </button>
         </div>
       </header>
-      <section class="compose-editor" id="composeEditor">
-        <aside class="file-panel">
+      <section class="compose-editor" id="composeEditor" role="dialog" aria-modal="true" aria-label="Compose file editor">
+        <div class="editor-head">
+          <button class="editor-tool" id="fileMenuToggle" type="button" aria-label="Choose file" title="Choose file" aria-controls="filePanel" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2"></path></svg>
+          </button>
+          <div class="editor-title">
+            <h2 id="editorTitle">Select a file</h2>
+            <p class="subtle" id="editorStatus" role="status" aria-live="polite">Choose a Compose file to begin editing.</p>
+          </div>
+          <div class="editor-actions">
+            <div class="editor-tools" role="toolbar" aria-label="Compose editor tools">
+              <button class="editor-tool" type="button" data-editor-action="outdent" aria-label="Outdent" title="Outdent" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 6h10M11 12h10M11 18h10M7 8l-4 4 4 4"></path></svg>
+              </button>
+              <button class="editor-tool" type="button" data-editor-action="indent" aria-label="Indent" title="Indent" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6h8M13 12h8M13 18h8M3 8l4 4-4 4"></path></svg>
+              </button>
+              <button class="editor-tool" id="wrapLines" type="button" aria-label="Wrap lines" title="Wrap lines" aria-pressed="false" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h14a3 3 0 0 1 0 6H7"></path><path d="m10 9-3 3 3 3"></path><path d="M4 18h7"></path></svg>
+              </button>
+            </div>
+            <button class="editor-tool primary" id="saveFile" type="button" aria-label="Save file" title="Save file" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8M7 3v5h8"></path></svg>
+            </button>
+            <button class="editor-tool" id="closeEditor" type="button" aria-label="Close editor" title="Close editor">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        </div>
+        <aside class="file-panel" id="filePanel" inert>
           <h2>Compose Files</h2>
           <p class="subtle" id="filesRoot">Loading files...</p>
           <div class="file-list" id="fileList"></div>
         </aside>
+        <button class="file-backdrop" id="fileBackdrop" type="button" tabindex="-1" aria-label="Close file menu"></button>
         <section class="editor-panel">
-          <div class="editor-head">
-            <div class="editor-title">
-              <h2 id="editorTitle">Select a file</h2>
-              <p class="subtle" id="editorStatus" role="status" aria-live="polite">Mounted compose files can be edited and saved here.</p>
-            </div>
-            <div class="editor-actions">
-              <div class="editor-tools" role="toolbar" aria-label="Compose editor tools">
-                <button class="editor-tool" type="button" data-editor-action="outdent" disabled>Outdent</button>
-                <button class="editor-tool" type="button" data-editor-action="indent" disabled>Indent</button>
-                <button class="editor-tool" id="wrapLines" type="button" aria-pressed="false" disabled>Wrap lines</button>
-              </div>
-              <button class="btn" id="saveFile" type="button" disabled>Save</button>
-            </div>
-          </div>
           <div class="editor-wrap" id="editorWrap">
             <pre class="highlight" id="highlightedYaml" aria-hidden="true"></pre>
-            <textarea class="compose-textarea" id="composeTextarea" aria-label="Docker Compose YAML editor" aria-describedby="editorHelp" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea>
+            <textarea class="compose-textarea" id="composeTextarea" aria-label="Compose file editor" aria-describedby="editorHelp" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea>
           </div>
           <p class="sr-only" id="editorHelp">Tab indents. Press Escape, then Tab to move focus out of the editor.</p>
         </section>
@@ -335,11 +368,16 @@ export const page = String.raw`<!doctype html>
     <script type="module">
       const statusEl = document.querySelector("#status");
       const projectsEl = document.querySelector("#projects");
+      const pageHeader = document.querySelector("#pageHeader");
       const filesToggle = document.querySelector("#filesToggle");
       const portsToggle = document.querySelector("#portsToggle");
       const imageToggle = document.querySelector("#imageToggle");
       const refreshOverlay = document.querySelector("#refreshOverlay");
       const composeEditor = document.querySelector("#composeEditor");
+      const fileMenuToggle = document.querySelector("#fileMenuToggle");
+      const filePanel = document.querySelector("#filePanel");
+      const fileBackdrop = document.querySelector("#fileBackdrop");
+      const closeEditor = document.querySelector("#closeEditor");
       const filesRoot = document.querySelector("#filesRoot");
       const fileList = document.querySelector("#fileList");
       const editorTitle = document.querySelector("#editorTitle");
@@ -357,6 +395,7 @@ export const page = String.raw`<!doctype html>
       let showPorts = false;
       let showImage = false;
       let isRefreshing = false;
+      let isSaving = false;
       let updatesCheckedAt = null;
       let tabMovesFocus = false;
       const mobileEditorQuery = window.matchMedia("(max-width: 760px)");
@@ -534,7 +573,7 @@ export const page = String.raw`<!doctype html>
 
           filesRoot.textContent = data.root;
           if (!data.files.length) {
-            fileList.innerHTML = '<p class="subtle">No compose YAML files found.</p>';
+            fileList.innerHTML = '<p class="subtle">No Compose YAML or JSON files found.</p>';
             return;
           }
 
@@ -544,6 +583,9 @@ export const page = String.raw`<!doctype html>
               + formatBytes(file.size) + ' · ' + new Date(file.modifiedAt).toLocaleString()
               + '</span></button>';
           }).join("");
+          Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
+            item.classList.toggle("active", item.dataset.path === currentFilePath);
+          });
         } catch (error) {
           filesRoot.textContent = "Unable to load files";
           fileList.innerHTML = '<div class="error"><p>' + escapeHtml(error.message) + '</p></div>';
@@ -561,6 +603,9 @@ export const page = String.raw`<!doctype html>
           currentFilePath = data.file.path;
           lastSavedContent = data.file.content;
           editorTitle.textContent = data.file.path;
+          composeTextarea.setAttribute("aria-label", /\.json$/i.test(currentFilePath)
+            ? "Docker Compose JSON editor"
+            : "Docker Compose YAML editor");
           composeTextarea.disabled = false;
           Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
             button.disabled = false;
@@ -571,6 +616,8 @@ export const page = String.raw`<!doctype html>
           Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
             item.classList.toggle("active", item.dataset.path === currentFilePath);
           });
+          setFileMenuOpen(false);
+          composeTextarea.focus();
         } catch (error) {
           editorStatus.textContent = error.message;
         }
@@ -578,35 +625,37 @@ export const page = String.raw`<!doctype html>
 
       async function saveComposeFile() {
         if (!currentFilePath) return;
-        saveFile.disabled = true;
+        const contentToSave = composeTextarea.value;
+        isSaving = true;
+        setDirty(contentToSave !== lastSavedContent);
         editorStatus.textContent = "Saving...";
         try {
           const response = await fetch("/api/compose-files/content?path=" + encodeURIComponent(currentFilePath), {
             method: "PUT",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ content: composeTextarea.value })
+            body: JSON.stringify({ content: contentToSave })
           });
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to save file");
 
-          lastSavedContent = composeTextarea.value;
-          setDirty(false);
+          lastSavedContent = contentToSave;
+          isSaving = false;
+          setDirty(composeTextarea.value !== lastSavedContent);
           await loadComposeFiles();
           Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
             item.classList.toggle("active", item.dataset.path === currentFilePath);
           });
         } catch (error) {
+          isSaving = false;
+          setDirty(composeTextarea.value !== lastSavedContent);
           editorStatus.textContent = error.message;
-          saveFile.disabled = false;
         }
       }
 
       function renderHighlight() {
-        if (mobileEditorQuery.matches) {
-          highlightedYaml.textContent = "";
-          return;
-        }
-        highlightedYaml.innerHTML = highlightYaml(composeTextarea.value) || "\n";
+        highlightedYaml.innerHTML = (/\.json$/i.test(currentFilePath)
+          ? highlightJson(composeTextarea.value)
+          : highlightYaml(composeTextarea.value)) || "\n";
         highlightedYaml.style.width = editorWrap.classList.contains("wrap-lines")
           ? composeTextarea.clientWidth + "px"
           : "max-content";
@@ -685,25 +734,113 @@ export const page = String.raw`<!doctype html>
       }
 
       function highlightYaml(value) {
-        return escapeHtml(value).split("\n").map(function(line) {
-          const commentIndex = line.indexOf("#");
-          const comment = commentIndex >= 0 ? '<span class="yaml-comment">' + line.slice(commentIndex) + '</span>' : "";
-          const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
-          return code
-            .replace(/^([\s-]*)([A-Za-z0-9_.-]+)(\s*:)/, '$1<span class="yaml-key">$2</span>$3')
-            .replace(/(&quot;[^&]*?&quot;|'[^']*?')/g, '<span class="yaml-string">$1</span>')
-            .replace(/\$\{[^}]+\}/g, '<span class="yaml-var">$&</span>')
-            .replace(/\b(true|false|null)\b/g, '<span class="yaml-bool">$1</span>')
-            + comment;
+        return value.split("\n").map(function(line) {
+          const commentIndex = findYamlComment(line);
+          let code = commentIndex < 0 ? line : line.slice(0, commentIndex);
+          const comment = commentIndex < 0
+            ? ""
+            : '<span class="yaml-comment">' + escapeHtml(line.slice(commentIndex)) + '</span>';
+          let prefix = "";
+          const key = code.match(/^(\s*-?\s*)([A-Za-z0-9_.-]+)(\s*:)/);
+          if (key) {
+            prefix = escapeHtml(key[1]) + '<span class="yaml-key">' + escapeHtml(key[2]) + '</span>'
+              + escapeHtml(key[3]);
+            code = code.slice(key[0].length);
+          }
+          return prefix + highlightYamlValue(code) + comment;
         }).join("\n");
       }
 
+      function findYamlComment(line) {
+        let quote = "";
+        for (let index = 0; index < line.length; index += 1) {
+          const char = line[index];
+          if (quote === '"' && char === "\\") {
+            index += 1;
+          } else if (char === quote) {
+            quote = "";
+          } else if (!quote && (char === '"' || char === "'")) {
+            quote = char;
+          } else if (!quote && char === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
+            return index;
+          }
+        }
+        return -1;
+      }
+
+      function highlightYamlValue(value) {
+        const tokenPattern = /("(?:\\.|[^"\\])*"|'(?:''|[^'])*')|(\$\{[^}]+\})|\b(true|false|null)\b|(-?\d+(?:\.\d+)?)/g;
+        let html = "";
+        let index = 0;
+        for (const match of value.matchAll(tokenPattern)) {
+          html += escapeHtml(value.slice(index, match.index));
+          const className = match[1] ? "yaml-string"
+            : match[2] ? "yaml-var"
+            : match[3] ? "yaml-bool"
+            : "syntax-number";
+          html += '<span class="' + className + '">' + escapeHtml(match[0]) + '</span>';
+          index = match.index + match[0].length;
+        }
+        return html + escapeHtml(value.slice(index));
+      }
+
+      function highlightJson(value) {
+        const tokenPattern = /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g;
+        let html = "";
+        let index = 0;
+        for (const match of value.matchAll(tokenPattern)) {
+          html += escapeHtml(value.slice(index, match.index));
+          if (match[1]) {
+            const className = match[2] ? "yaml-key" : "yaml-string";
+            html += '<span class="' + className + '">' + escapeHtml(match[1]) + '</span>'
+              + escapeHtml(match[2] || "");
+          } else if (match[3]) {
+            html += '<span class="syntax-number">' + escapeHtml(match[3]) + '</span>';
+          } else {
+            html += '<span class="yaml-bool">' + escapeHtml(match[0]) + '</span>';
+          }
+          index = match.index + match[0].length;
+        }
+        return html + escapeHtml(value.slice(index));
+      }
+
       function setDirty(isDirty) {
-        saveFile.disabled = !currentFilePath || !isDirty;
+        saveFile.disabled = isSaving || !currentFilePath || !isDirty;
         const message = currentFilePath
           ? (isDirty ? "Unsaved changes" : "Saved")
-          : "Mounted compose files can be edited and saved here.";
+          : "Choose a Compose file to begin editing.";
         if (editorStatus.textContent !== message) editorStatus.textContent = message;
+      }
+
+      function setFileMenuOpen(open) {
+        composeEditor.classList.toggle("files-open", open);
+        fileMenuToggle.setAttribute("aria-expanded", String(open));
+        filePanel.toggleAttribute("inert", !open);
+      }
+
+      function setEditorOpen(open) {
+        composeEditor.classList.toggle("open", open);
+        document.body.classList.toggle("editor-open", open);
+        pageHeader.toggleAttribute("inert", open);
+        projectsEl.toggleAttribute("inert", open);
+        filesToggle.classList.toggle("active", open);
+        filesToggle.setAttribute("aria-expanded", String(open));
+        if (!open) {
+          setFileMenuOpen(false);
+          filesToggle.focus();
+          return;
+        }
+        loadComposeFiles();
+        setFileMenuOpen(!currentFilePath);
+        requestAnimationFrame(function() {
+          renderHighlight();
+          (currentFilePath ? composeTextarea : fileMenuToggle).focus();
+        });
+      }
+
+      function closeComposeEditor() {
+        if (composeTextarea.value !== lastSavedContent && !confirm("Close without saving changes?")) return;
+        setEditorOpen(false);
       }
 
       function formatBytes(bytes) {
@@ -905,11 +1042,34 @@ export const page = String.raw`<!doctype html>
       }
 
       filesToggle.addEventListener("click", function() {
-        const open = !composeEditor.classList.contains("open");
-        composeEditor.classList.toggle("open", open);
-        filesToggle.classList.toggle("active", open);
-        filesToggle.setAttribute("aria-expanded", String(open));
-        if (open) loadComposeFiles();
+        setEditorOpen(true);
+      });
+
+      fileMenuToggle.addEventListener("click", function() {
+        setFileMenuOpen(!composeEditor.classList.contains("files-open"));
+      });
+      fileBackdrop.addEventListener("click", function() { setFileMenuOpen(false); });
+      closeEditor.addEventListener("click", closeComposeEditor);
+
+      composeEditor.addEventListener("keydown", function(e) {
+        if (e.key === "Escape" && e.target !== composeTextarea && composeEditor.classList.contains("files-open")) {
+          e.preventDefault();
+          setFileMenuOpen(false);
+          fileMenuToggle.focus();
+          return;
+        }
+        if (e.key !== "Tab" || e.defaultPrevented) return;
+        const focusable = Array.from(composeEditor.querySelectorAll("button:not(:disabled), textarea:not(:disabled)"))
+          .filter(function(element) { return !element.closest("[inert]") && element.tabIndex !== -1; });
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       });
 
       statusEl.addEventListener("click", function() {
@@ -983,6 +1143,11 @@ export const page = String.raw`<!doctype html>
       });
 
       saveFile.addEventListener("click", saveComposeFile);
+      window.addEventListener("beforeunload", function(e) {
+        if (composeTextarea.value === lastSavedContent) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
 
       function escapeHtml(value) {
         return String(value).replace(/[&<>'"]/g, function(char) {
