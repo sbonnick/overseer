@@ -58,7 +58,7 @@ export const page = String.raw`<!doctype html>
       .status-icon { width: 15px; height: 15px; flex: 0 0 15px; }
       .status.refreshing .status-icon { animation: spin 0.8s linear infinite; }
 
-      .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+      .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; justify-content: flex-end; }
 
       .btn, .toggle {
         border: 1px solid var(--line); background: color-mix(in srgb, var(--panel), transparent 20%);
@@ -233,7 +233,8 @@ export const page = String.raw`<!doctype html>
 
       @media (max-width: 760px) {
         header, .project-head, .editor-head { flex-direction: column; align-items: start; }
-        .top-actions, .project-actions { justify-content: flex-start; }
+        .top-actions { width: 100%; justify-content: flex-start; overflow-x: auto; padding-bottom: 4px; }
+        .project-actions { justify-content: flex-start; }
         .cards { grid-template-columns: 1fr; }
         .compose-editor { grid-template-columns: 1fr; }
         .file-panel { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -250,16 +251,14 @@ export const page = String.raw`<!doctype html>
           <p class="subtle">Lite Docker Compose project manager for Traefik-backed stacks.</p>
         </div>
         <div class="top-actions">
-          <button class="toggle" id="filesToggle" type="button" role="switch" aria-checked="false" aria-controls="composeEditor" aria-expanded="false">
-            <span>Compose files</span><span class="toggle-track" aria-hidden="true"></span>
-          </button>
+          <button class="status" id="status" type="button" title="Check for updates now">Loading...</button>
           <button class="toggle" id="portsToggle" type="button" role="switch" aria-checked="false">
             <span>Ports</span><span class="toggle-track" aria-hidden="true"></span>
           </button>
           <button class="toggle" id="imageToggle" type="button" role="switch" aria-checked="false">
             <span>Image</span><span class="toggle-track" aria-hidden="true"></span>
           </button>
-          <button class="status" id="status" type="button" title="Check for updates now">Loading...</button>
+          <button class="btn" id="filesToggle" type="button" aria-controls="composeEditor" aria-expanded="false">Compose files</button>
         </div>
       </header>
       <section class="compose-editor" id="composeEditor">
@@ -776,7 +775,7 @@ export const page = String.raw`<!doctype html>
       filesToggle.addEventListener("click", function() {
         const open = !composeEditor.classList.contains("open");
         composeEditor.classList.toggle("open", open);
-        filesToggle.setAttribute("aria-checked", String(open));
+        filesToggle.classList.toggle("active", open);
         filesToggle.setAttribute("aria-expanded", String(open));
         if (open) loadComposeFiles();
       });
