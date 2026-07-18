@@ -60,13 +60,26 @@ export const page = String.raw`<!doctype html>
 
       .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
-      .btn {
+      .btn, .toggle {
         border: 1px solid var(--line); background: color-mix(in srgb, var(--panel), transparent 20%);
         color: var(--text); border-radius: 10px; padding: 8px 12px;
         font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
       }
-      .btn:hover:not(:disabled), .btn.active { border-color: var(--accent); color: #a5d6ff; }
+      .btn:hover:not(:disabled), .btn.active, .toggle:hover { border-color: var(--accent); color: #a5d6ff; }
       .btn:disabled { opacity: 0.5; cursor: default; }
+      .toggle { display: inline-flex; align-items: center; gap: 8px; }
+      .toggle-track {
+        position: relative; width: 30px; height: 18px; flex: 0 0 30px;
+        border: 1px solid var(--muted); border-radius: 999px; background: var(--line);
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .toggle-track::after {
+        content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+        border-radius: 50%; background: var(--muted); transition: transform 0.15s, background 0.15s;
+      }
+      .toggle[aria-checked="true"] { border-color: var(--accent); color: #a5d6ff; }
+      .toggle[aria-checked="true"] .toggle-track { border-color: var(--accent); background: var(--accent); }
+      .toggle[aria-checked="true"] .toggle-track::after { background: white; transform: translateX(12px); }
 
       .compose-editor {
         display: none; grid-template-columns: 280px minmax(0, 1fr); gap: 18px;
@@ -237,9 +250,15 @@ export const page = String.raw`<!doctype html>
           <p class="subtle">Lite Docker Compose project manager for Traefik-backed stacks.</p>
         </div>
         <div class="top-actions">
-          <button class="btn" id="filesToggle" type="button">Compose files</button>
-          <button class="btn" id="portsToggle" type="button" aria-pressed="false">Ports</button>
-          <button class="btn" id="imageToggle" type="button" aria-pressed="false">Image</button>
+          <button class="toggle" id="filesToggle" type="button" role="switch" aria-checked="false" aria-controls="composeEditor" aria-expanded="false">
+            <span>Compose files</span><span class="toggle-track" aria-hidden="true"></span>
+          </button>
+          <button class="toggle" id="portsToggle" type="button" role="switch" aria-checked="false">
+            <span>Ports</span><span class="toggle-track" aria-hidden="true"></span>
+          </button>
+          <button class="toggle" id="imageToggle" type="button" role="switch" aria-checked="false">
+            <span>Image</span><span class="toggle-track" aria-hidden="true"></span>
+          </button>
           <button class="status" id="status" type="button" title="Check for updates now">Loading...</button>
         </div>
       </header>
@@ -623,17 +642,30 @@ export const page = String.raw`<!doctype html>
       function renderUrls(routes) {
         if (!routes.length) return '<div class="subtle" style="font-size:13px">No Traefik routes</div>';
         const links = routes.map(function(route) {
-          if (route.hostnames.length) {
-            const items = route.hostnames.map(function(host) {
-              const proto = route.tls ? "https" : "http";
-              return '<a href="' + proto + "://" + escapeHtml(host) + '" target="_blank" rel="noreferrer">'
-                + escapeHtml(host) + '</a>';
+          const validHosts = route.hostnames.map(function(host) {
+            return { host: host, url: routeUrl(host, route.tls) };
+          }).filter(function(item) { return item.url; });
+          if (validHosts.length) {
+            const items = validHosts.map(function(item) {
+              return '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">'
+                + escapeHtml(item.host) + '</a>';
             }).join("<br>");
             return '<div class="url">' + items + '</div>';
           }
           return '<div class="url"><code>' + escapeHtml(route.rule || "no rule") + '</code></div>';
         }).join("");
         return '<div class="urls">' + links + '</div>';
+      }
+
+      function routeUrl(host, tls) {
+        try {
+          const url = new URL((tls ? "https" : "http") + "://" + host);
+          if (!url.hostname || url.hostname.includes("*") || url.username || url.password
+            || url.pathname !== "/" || url.search || url.hash) return null;
+          return url.href;
+        } catch {
+          return null;
+        }
       }
 
       function renderPorts(ports) {
@@ -741,7 +773,8 @@ export const page = String.raw`<!doctype html>
       filesToggle.addEventListener("click", function() {
         const open = !composeEditor.classList.contains("open");
         composeEditor.classList.toggle("open", open);
-        filesToggle.classList.toggle("active", open);
+        filesToggle.setAttribute("aria-checked", String(open));
+        filesToggle.setAttribute("aria-expanded", String(open));
         if (open) loadComposeFiles();
       });
 
@@ -752,15 +785,13 @@ export const page = String.raw`<!doctype html>
 
       portsToggle.addEventListener("click", function() {
         showPorts = !showPorts;
-        portsToggle.classList.toggle("active", showPorts);
-        portsToggle.setAttribute("aria-pressed", String(showPorts));
+        portsToggle.setAttribute("aria-checked", String(showPorts));
         render(currentProjects);
       });
 
       imageToggle.addEventListener("click", function() {
         showImage = !showImage;
-        imageToggle.classList.toggle("active", showImage);
-        imageToggle.setAttribute("aria-pressed", String(showImage));
+        imageToggle.setAttribute("aria-checked", String(showImage));
         render(currentProjects);
       });
 
