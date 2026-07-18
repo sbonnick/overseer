@@ -39,7 +39,8 @@ describe("compose editor", () => {
 
   test("opens a container's mapped Compose configuration", () => {
     expect(page).toContain('class="btn-card-icon btn-edit-compose"');
-    expect(page).toContain('aria-label="Compose configuration is not exposed for editing"');
+    expect(page).toContain('if (!service.composeEditorFiles?.length) return ""');
+    expect(page).not.toContain('aria-label="Compose configuration is not exposed for editing"');
     expect(page).toContain("await openComposeFile(path, serviceName, servicePaths)");
     expect(page).toContain('"/api/compose-files/service-content"');
     expect(page).toContain("function revealComposeService(offset)");

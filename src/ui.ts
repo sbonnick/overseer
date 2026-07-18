@@ -1066,10 +1066,9 @@ export const page = String.raw`<!doctype html>
       }
 
       function renderEditComposeButton(service) {
+        if (!service.composeEditorFiles?.length) return "";
         return '<button class="btn-card-icon btn-edit-compose" type="button"'
-          + (service.composeEditorFiles?.length
-            ? ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" data-paths="' + escapeHtml(JSON.stringify(service.composeEditorFiles)) + '" data-compose-service="' + escapeHtml(service.composeService || service.name) + '" title="Edit compose configuration" aria-label="Edit compose configuration for ' + escapeHtml(service.displayName || service.name) + '"'
-            : ' disabled title="Compose file is not exposed by COMPOSE_FILES_DIR" aria-label="Compose configuration is not exposed for editing"')
+          + ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" data-paths="' + escapeHtml(JSON.stringify(service.composeEditorFiles)) + '" data-compose-service="' + escapeHtml(service.composeService || service.name) + '" title="Edit compose configuration" aria-label="Edit compose configuration for ' + escapeHtml(service.displayName || service.name) + '"'
           + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></button>';
       }
 
