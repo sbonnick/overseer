@@ -37,6 +37,13 @@ describe("compose editor", () => {
     expect(page).toContain("Number(Boolean(a.isSelf)) - Number(Boolean(b.isSelf))");
   });
 
+  test("opens a container's mapped Compose configuration", () => {
+    expect(page).toContain('class="btn-card-icon btn-edit-compose"');
+    expect(page).toContain('aria-label="Compose configuration is not exposed for editing"');
+    expect(page).toContain("currentFilePath !== path");
+    expect(page).toContain("await openComposeFile(path)");
+  });
+
   test("contains valid editor script syntax", () => {
     const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeDefined();

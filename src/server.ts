@@ -1,5 +1,11 @@
 import path from "node:path";
-import { listComposeFiles, readComposeFile, writeComposeFile } from "./compose-files.ts";
+import {
+  type ComposePathMapping,
+  listComposeFiles,
+  readComposeFile,
+  resolveComposeEditorFiles,
+  writeComposeFile,
+} from "./compose-files.ts";
 import { type DockerConnection, loadConfig } from "./config.ts";
 import { discoverProjects } from "./discovery.ts";
 import { DockerClient } from "./docker.ts";
@@ -24,6 +30,7 @@ export function startServer(): void {
   const docker = new DockerClient(config.docker);
   const updates = new UpdateChecker(docker, config.updateCheckIntervalMs);
   let dockerMutationActive = false;
+  let composePathMappings: Promise<ComposePathMapping[] | undefined> | undefined;
 
   updates.start();
 
@@ -88,6 +95,17 @@ export function startServer(): void {
             }
           }
           await resolveServiceImageNames(docker, projects);
+          composePathMappings ??= resolveComposePathMappings(
+            docker,
+            containers,
+            config.composeFilesDir,
+          );
+          const pathMappings = await composePathMappings;
+          if (pathMappings) {
+            attachComposeEditorFiles(projects, config.composeFilesDir, pathMappings);
+          } else {
+            composePathMappings = undefined;
+          }
           for (const project of projects) {
             for (const service of project.services) {
               service.isSelf = isCurrentService(service.id, service.labels);
@@ -249,6 +267,77 @@ async function resolveServiceImageNames(
       }
     }),
   );
+}
+
+function attachComposeEditorFiles(
+  projects: ReturnType<typeof discoverProjects>,
+  editorRoot: string,
+  pathMappings: ComposePathMapping[],
+): void {
+  for (const project of projects) {
+    for (const service of project.services) {
+      service.composeEditorFiles = resolveComposeEditorFiles(
+        editorRoot,
+        pathMappings,
+        service.labels["com.docker.compose.project.working_dir"],
+        splitConfigFiles(service.labels["com.docker.compose.project.config_files"]),
+      );
+    }
+  }
+}
+
+async function resolveComposePathMappings(
+  docker: DockerClient,
+  containers: Awaited<ReturnType<DockerClient["listContainers"]>>,
+  editorRoot: string,
+): Promise<ComposePathMapping[] | undefined> {
+  const directlyMatched = containers.find((container) =>
+    isCurrentService(container.Id, container.Labels ?? {}),
+  );
+  let inspected = directlyMatched
+    ? await docker.inspectContainer(directlyMatched.Id).catch(() => undefined)
+    : undefined;
+
+  if (!inspected && Bun.env.HOSTNAME) {
+    const candidates = await Promise.allSettled(
+      containers.map((container) => docker.inspectContainer(container.Id)),
+    );
+    for (const candidate of candidates) {
+      if (
+        candidate.status === "fulfilled" &&
+        candidate.value.Config.Hostname === Bun.env.HOSTNAME
+      ) {
+        inspected = candidate.value;
+        break;
+      }
+    }
+    if (!inspected && candidates.some((candidate) => candidate.status === "rejected")) {
+      return undefined;
+    }
+  }
+
+  const resolvedEditorRoot = path.resolve(editorRoot);
+  const mappings =
+    inspected?.Mounts?.flatMap((mount) => {
+      if (
+        mount.Type !== "bind" ||
+        !mount.Source ||
+        !mount.Destination ||
+        (!isPathInside(mount.Destination, resolvedEditorRoot) &&
+          !isPathInside(resolvedEditorRoot, mount.Destination))
+      )
+        return [];
+      return [{ source: path.resolve(mount.Source), destination: path.resolve(mount.Destination) }];
+    }) ?? [];
+
+  return mappings.length
+    ? mappings
+    : [{ source: resolvedEditorRoot, destination: resolvedEditorRoot }];
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 async function applyUpdate(

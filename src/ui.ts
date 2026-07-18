@@ -199,6 +199,15 @@ export const page = String.raw`<!doctype html>
       }
 
       .card-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+      .card-controls { display: flex; align-items: center; gap: 8px; }
+      .btn-card-icon {
+        display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0;
+        border: 1px solid var(--line); border-radius: 8px; background: transparent;
+        color: var(--muted); cursor: pointer;
+      }
+      .btn-card-icon:hover:not(:disabled) { border-color: var(--accent); color: #a5d6ff; }
+      .btn-card-icon:disabled { opacity: 0.35; cursor: default; }
+      .btn-card-icon svg { width: 16px; height: 16px; }
 
       .service-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
       .service-icon { width: 42px; height: 42px; flex: 0 0 42px; padding: 4px; object-fit: contain; }
@@ -396,6 +405,7 @@ export const page = String.raw`<!doctype html>
       let showImage = false;
       let isRefreshing = false;
       let isSaving = false;
+      let openFileRequest = 0;
       const bulkUpdateProjects = new Map();
       let updatesCheckedAt = null;
       let tabMovesFocus = false;
@@ -603,12 +613,18 @@ export const page = String.raw`<!doctype html>
       }
 
       async function openComposeFile(path) {
+        const requestId = ++openFileRequest;
         editorStatus.textContent = "Opening...";
         saveFile.disabled = true;
+        composeTextarea.disabled = true;
+        Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
+          button.disabled = true;
+        });
         try {
           const response = await fetch("/api/compose-files/content?path=" + encodeURIComponent(path));
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to open file");
+          if (requestId !== openFileRequest) return;
 
           currentFilePath = data.file.path;
           lastSavedContent = data.file.content;
@@ -629,6 +645,12 @@ export const page = String.raw`<!doctype html>
           setFileMenuOpen(false);
           composeTextarea.focus();
         } catch (error) {
+          if (requestId !== openFileRequest) return;
+          composeTextarea.disabled = !currentFilePath;
+          Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
+            button.disabled = !currentFilePath;
+          });
+          setDirty(Boolean(currentFilePath) && composeTextarea.value !== lastSavedContent);
           editorStatus.textContent = error.message;
         }
       }
@@ -907,7 +929,16 @@ export const page = String.raw`<!doctype html>
             + '<div class="service-title">' + renderServiceIcon(service)
             + '<div class="service-details"><div class="card-name">' + escapeHtml(service.displayName || service.name) + '</div>'
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
-            + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
+            + '<div class="card-controls">'
+              + '<button class="btn-card-icon btn-edit-compose" type="button"'
+                + (service.composeEditorFiles?.length
+                  ? ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" title="Edit ' + escapeHtml(service.composeEditorFiles[0]) + '" aria-label="Edit ' + escapeHtml(service.composeEditorFiles[0]) + ' compose configuration"'
+                  : ' disabled title="Compose file is not exposed by COMPOSE_FILES_DIR" aria-label="Compose configuration is not exposed for editing"')
+                + '>'
+                + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>'
+              + '</button>'
+              + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
+            + '</div>'
           + '</div>'
           + (showImage ? '<div class="card-image">' + escapeHtml(service.image) + '</div>' : "")
           + renderUrls(service.routes)
@@ -997,6 +1028,17 @@ export const page = String.raw`<!doctype html>
       }
 
       projectsEl.addEventListener("click", async function(e) {
+        const editComposeBtn = e.target.closest(".btn-edit-compose");
+        if (editComposeBtn && !editComposeBtn.disabled) {
+          const path = editComposeBtn.dataset.path;
+          if (currentFilePath && currentFilePath !== path
+            && composeTextarea.value !== lastSavedContent
+            && !confirm("Discard unsaved changes?")) return;
+          setEditorOpen(true);
+          if (currentFilePath !== path) await openComposeFile(path);
+          return;
+        }
+
         const updateProjectBtn = e.target.closest(".btn-update-project");
         if (updateProjectBtn && !updateProjectBtn.disabled) {
           await updateProjectServices(updateProjectBtn.dataset.project);

@@ -10,6 +10,7 @@ A lite Docker Compose project manager designed to be deployed alongside your Tra
 - **Update checking** — Compares local image digests against registry manifests daily. Supports Docker Hub, GHCR, and any OCI-compatible registry with Bearer auth.
 - **One-click updates** — Pull the latest image and recreate the container, preserving all compose configuration.
 - **Project updates** — Sequentially update every container with an available image update in a Compose project.
+- **Container config shortcuts** — Open each container's exposed Compose configuration directly from its card.
 - **Socket or HTTP proxy** — Connect to the Docker daemon via `/var/run/docker.sock` or an HTTP proxy URL.
 - **Zero runtime dependencies** — Pure Bun + TypeScript, no npm packages shipped at runtime.
 

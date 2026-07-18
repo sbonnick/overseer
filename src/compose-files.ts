@@ -13,6 +13,11 @@ export type ComposeFileContent = ComposeFileSummary & {
   content: string;
 };
 
+export type ComposePathMapping = {
+  source: string;
+  destination: string;
+};
+
 const COMPOSE_FILE_MATCH = /(^|[-_.])(docker-)?compose(?:[-_.][^/]*)?\.(?:ya?ml|json)$/i;
 const MAX_FILE_BYTES = 1024 * 1024;
 
@@ -46,6 +51,46 @@ export async function writeComposeFile(
   await assertComposeFile(path.resolve(rootDir), filePath);
   await writeFile(filePath, content, "utf8");
   return getComposeFileInfo(path.resolve(rootDir), filePath);
+}
+
+export function resolveComposeEditorFiles(
+  editorRoot: string,
+  pathMappings: ComposePathMapping[],
+  workingDir: string | undefined,
+  configFiles: string[],
+): string[] {
+  return configFiles.flatMap((configFile) => {
+    if (!path.isAbsolute(configFile) && !workingDir) return [];
+    const absolutePath = path.resolve(workingDir ?? editorRoot, configFile);
+    const mapping = pathMappings
+      .filter((item) => isPathInside(item.source, absolutePath))
+      .toSorted((a, b) => path.resolve(b.source).length - path.resolve(a.source).length)[0];
+    if (!mapping) return [];
+    const containerPath = path.resolve(
+      mapping.destination,
+      path.relative(path.resolve(mapping.source), absolutePath),
+    );
+    const destinationMapping = pathMappings
+      .filter((item) => isPathInside(item.destination, containerPath))
+      .toSorted(
+        (a, b) => path.resolve(b.destination).length - path.resolve(a.destination).length,
+      )[0];
+    if (!destinationMapping) return [];
+    const mappedSourcePath = path.resolve(
+      destinationMapping.source,
+      path.relative(path.resolve(destinationMapping.destination), containerPath),
+    );
+    if (mappedSourcePath !== absolutePath) return [];
+    const relativePath = path.relative(path.resolve(editorRoot), containerPath);
+    if (
+      !relativePath ||
+      path.isAbsolute(relativePath) ||
+      relativePath.startsWith("..") ||
+      !isComposeFile(path.basename(relativePath))
+    )
+      return [];
+    return [path.normalize(relativePath)];
+  });
 }
 
 async function walkComposeFiles(

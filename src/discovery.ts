@@ -32,6 +32,7 @@ export type ServiceInfo = {
   ports: string[];
   routes: RouteInfo[];
   labels: Record<string, string>;
+  composeEditorFiles?: string[];
   isSelf?: boolean;
   update?: UpdateInfo;
 };
