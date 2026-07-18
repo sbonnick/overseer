@@ -73,18 +73,14 @@ export class UpdateChecker {
   }
 
   async checkAll(): Promise<void> {
-    try {
-      const containers = await this.docker.listContainers();
-      const imageRefs = new Set(
-        containers
-          .filter((c) => c.Labels?.["com.docker.compose.project"])
-          .map((c) => c.Labels?.["com.docker.compose.image"] ?? c.Image),
-      );
-      await Promise.allSettled([...imageRefs].map((ref) => this.checkOne(ref)));
-      this.lastCheckedAt = new Date().toISOString();
-    } catch (error) {
-      console.error("[updates] check all failed:", error);
-    }
+    const containers = await this.docker.listContainers();
+    const imageRefs = new Set(
+      containers
+        .filter((c) => c.Labels?.["com.docker.compose.project"])
+        .map((c) => c.Labels?.["com.docker.compose.image"] ?? c.Image),
+    );
+    await Promise.allSettled([...imageRefs].map((ref) => this.checkOne(ref)));
+    this.lastCheckedAt = new Date().toISOString();
   }
 
   async checkOne(imageRef: string): Promise<UpdateStatus> {

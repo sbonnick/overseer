@@ -382,12 +382,18 @@ export const page = String.raw`<!doctype html>
         return "just now";
       }
 
-      async function refresh() {
+      async function refresh(checkForUpdates) {
         if (isRefreshing) return;
         isRefreshing = true;
         statusEl.disabled = true;
-        setStatus("Refreshing...", true);
+        setStatus(checkForUpdates ? "Checking updates..." : "Refreshing...", true);
         try {
+          if (checkForUpdates) {
+            const checkResponse = await fetch("/api/updates/check", { method: "POST" });
+            const checkData = await readJson(checkResponse);
+            if (!checkResponse.ok) throw new Error(checkData.error || "Update check failed");
+            if (checkData.updatesCheckedAt) updatesCheckedAt = checkData.updatesCheckedAt;
+          }
           const response = await fetch("/api/projects");
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Request failed");
@@ -782,7 +788,7 @@ export const page = String.raw`<!doctype html>
 
       statusEl.addEventListener("click", function() {
         if (pollTimer) clearTimeout(pollTimer);
-        refresh();
+        refresh(true);
       });
 
       portsToggle.addEventListener("click", function() {

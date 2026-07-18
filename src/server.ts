@@ -61,6 +61,18 @@ export function startServer(): void {
         });
       }
 
+      if (url.pathname === "/api/updates/check" && request.method === "POST") {
+        try {
+          await updates.checkAll();
+          return json({ updatesCheckedAt: updates.getLastCheckedAt() });
+        } catch (error) {
+          return json(
+            { error: error instanceof Error ? error.message : "Unable to check for updates" },
+            502,
+          );
+        }
+      }
+
       if (url.pathname === "/api/projects") {
         try {
           const containers = await docker.listContainers();
