@@ -406,6 +406,7 @@ export const page = String.raw`<!doctype html>
       let isRefreshing = false;
       let isSaving = false;
       let openFileRequest = 0;
+      let locateServiceRequest = 0;
       const bulkUpdateProjects = new Map();
       let updatesCheckedAt = null;
       let tabMovesFocus = false;
@@ -612,7 +613,8 @@ export const page = String.raw`<!doctype html>
         }
       }
 
-      async function openComposeFile(path) {
+      async function openComposeFile(path, serviceName, servicePaths) {
+        locateServiceRequest += 1;
         const requestId = ++openFileRequest;
         editorStatus.textContent = "Opening...";
         saveFile.disabled = true;
@@ -621,7 +623,14 @@ export const page = String.raw`<!doctype html>
           button.disabled = true;
         });
         try {
-          const response = await fetch("/api/compose-files/content?path=" + encodeURIComponent(path));
+          const response = serviceName && servicePaths?.length > 1
+            ? await fetch("/api/compose-files/service-content", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ paths: servicePaths, service: serviceName })
+            })
+            : await fetch("/api/compose-files/content?path=" + encodeURIComponent(path)
+              + (serviceName ? "&service=" + encodeURIComponent(serviceName) : ""));
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to open file");
           if (requestId !== openFileRequest) return;
@@ -637,13 +646,15 @@ export const page = String.raw`<!doctype html>
             button.disabled = false;
           });
           composeTextarea.value = data.file.content;
+          composeTextarea.scrollTop = 0;
+          composeTextarea.scrollLeft = 0;
           renderHighlight();
           setDirty(false);
           Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
             item.classList.toggle("active", item.dataset.path === currentFilePath);
           });
           setFileMenuOpen(false);
-          composeTextarea.focus();
+          revealComposeService(data.file.serviceOffset);
         } catch (error) {
           if (requestId !== openFileRequest) return;
           composeTextarea.disabled = !currentFilePath;
@@ -653,6 +664,19 @@ export const page = String.raw`<!doctype html>
           setDirty(Boolean(currentFilePath) && composeTextarea.value !== lastSavedContent);
           editorStatus.textContent = error.message;
         }
+      }
+
+      function revealComposeService(offset) {
+        const position = Number.isInteger(offset) ? offset : 0;
+        composeTextarea.blur();
+        composeTextarea.setSelectionRange(position, position);
+        composeTextarea.focus();
+        requestAnimationFrame(function() {
+          if (position > 0) composeTextarea.scrollTop = Math.max(0,
+            composeTextarea.scrollTop - composeTextarea.clientHeight * 0.2);
+          composeTextarea.scrollLeft = 0;
+          syncHighlightScroll();
+        });
       }
 
       async function saveComposeFile() {
@@ -871,6 +895,10 @@ export const page = String.raw`<!doctype html>
       }
 
       function closeComposeEditor() {
+        if (isSaving) {
+          alert("Wait for the current save to finish before closing the editor.");
+          return;
+        }
         if (composeTextarea.value !== lastSavedContent && !confirm("Close without saving changes?")) return;
         setEditorOpen(false);
       }
@@ -932,7 +960,7 @@ export const page = String.raw`<!doctype html>
             + '<div class="card-controls">'
               + '<button class="btn-card-icon btn-edit-compose" type="button"'
                 + (service.composeEditorFiles?.length
-                  ? ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" title="Edit ' + escapeHtml(service.composeEditorFiles[0]) + '" aria-label="Edit ' + escapeHtml(service.composeEditorFiles[0]) + ' compose configuration"'
+                  ? ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" data-paths="' + escapeHtml(JSON.stringify(service.composeEditorFiles)) + '" data-compose-service="' + escapeHtml(service.composeService || service.name) + '" title="Edit compose configuration" aria-label="Edit compose configuration for ' + escapeHtml(service.displayName || service.name) + '"'
                   : ' disabled title="Compose file is not exposed by COMPOSE_FILES_DIR" aria-label="Compose configuration is not exposed for editing"')
                 + '>'
                 + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>'
@@ -1030,12 +1058,43 @@ export const page = String.raw`<!doctype html>
       projectsEl.addEventListener("click", async function(e) {
         const editComposeBtn = e.target.closest(".btn-edit-compose");
         if (editComposeBtn && !editComposeBtn.disabled) {
+          if (isSaving) {
+            alert("Wait for the current save to finish before opening another configuration.");
+            return;
+          }
           const path = editComposeBtn.dataset.path;
-          if (currentFilePath && currentFilePath !== path
-            && composeTextarea.value !== lastSavedContent
+          const servicePaths = JSON.parse(editComposeBtn.dataset.paths);
+          const serviceName = editComposeBtn.dataset.composeService;
+          let discardConfirmed = false;
+          if (servicePaths.includes(currentFilePath)) {
+            setEditorOpen(true);
+            const requestId = ++locateServiceRequest;
+            const content = composeTextarea.value;
+            const response = await fetch("/api/compose-files/locate", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ content, path: currentFilePath, service: serviceName })
+            });
+            const data = await readJson(response);
+            if (!response.ok) {
+              alert(data.error || "Unable to locate service configuration");
+              return;
+            }
+            if (requestId !== locateServiceRequest || !servicePaths.includes(currentFilePath)
+              || composeTextarea.value !== content || !composeEditor.classList.contains("open")) return;
+            if (Number.isInteger(data.offset)) {
+              revealComposeService(data.offset);
+              return;
+            }
+            if (composeTextarea.value !== lastSavedContent) {
+              if (!confirm("Discard unsaved changes?")) return;
+              discardConfirmed = true;
+            }
+          }
+          if (!discardConfirmed && composeTextarea.value !== lastSavedContent
             && !confirm("Discard unsaved changes?")) return;
           setEditorOpen(true);
-          if (currentFilePath !== path) await openComposeFile(path);
+          await openComposeFile(path, serviceName, servicePaths);
           return;
         }
 
@@ -1262,6 +1321,10 @@ export const page = String.raw`<!doctype html>
       fileList.addEventListener("click", function(e) {
         const item = e.target.closest(".file-item");
         if (!item) return;
+        if (isSaving) {
+          alert("Wait for the current save to finish before opening another file.");
+          return;
+        }
         if (composeTextarea.value !== lastSavedContent && !confirm("Discard unsaved changes?")) {
           return;
         }

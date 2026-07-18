@@ -6,6 +6,7 @@ import {
   resolveComposeEditorFiles,
   writeComposeFile,
 } from "./compose-files.ts";
+import { findComposeServiceOffset } from "./compose-location.ts";
 import { type DockerConnection, loadConfig } from "./config.ts";
 import { discoverProjects } from "./discovery.ts";
 import { DockerClient } from "./docker.ts";
@@ -148,7 +149,14 @@ export function startServer(): void {
 
         try {
           if (request.method === "GET") {
-            return json({ file: await readComposeFile(config.composeFilesDir, filePath) });
+            const file = await readComposeFile(config.composeFilesDir, filePath);
+            const serviceName = url.searchParams.get("service") ?? "";
+            return json({
+              file: {
+                ...file,
+                serviceOffset: findComposeServiceOffset(file.content, file.path, serviceName),
+              },
+            });
           }
 
           if (request.method === "PUT") {
@@ -164,6 +172,73 @@ export function startServer(): void {
         } catch (error) {
           return json(
             { error: error instanceof Error ? error.message : "Unable to access file" },
+            500,
+          );
+        }
+      }
+
+      if (url.pathname === "/api/compose-files/locate" && request.method === "POST") {
+        let body: { content?: unknown; path?: unknown; service?: unknown };
+        try {
+          body = (await readLimitedJson(request, 8 * 1024 * 1024)) as typeof body;
+        } catch (error) {
+          return json(
+            { error: error instanceof Error ? error.message : "Invalid request body" },
+            error instanceof Error && "status" in error && typeof error.status === "number"
+              ? error.status
+              : 400,
+          );
+        }
+        if (
+          typeof body.content !== "string" ||
+          typeof body.path !== "string" ||
+          typeof body.service !== "string" ||
+          new TextEncoder().encode(body.content).byteLength > 1024 * 1024 ||
+          body.path.length > 4096 ||
+          body.service.length > 256
+        ) {
+          return json({ error: "Invalid Compose content or service" }, 400);
+        }
+        return json({ offset: findComposeServiceOffset(body.content, body.path, body.service) });
+      }
+
+      if (url.pathname === "/api/compose-files/service-content" && request.method === "POST") {
+        let body: { paths?: unknown; service?: unknown };
+        try {
+          body = (await readLimitedJson(request, 256 * 1024)) as typeof body;
+        } catch (error) {
+          return json(
+            { error: error instanceof Error ? error.message : "Invalid request body" },
+            error instanceof Error && "status" in error && typeof error.status === "number"
+              ? error.status
+              : 400,
+          );
+        }
+        if (
+          !Array.isArray(body.paths) ||
+          !body.paths.length ||
+          body.paths.length > 32 ||
+          !body.paths.every(
+            (filePath) => typeof filePath === "string" && filePath.length <= 4096,
+          ) ||
+          typeof body.service !== "string" ||
+          body.service.length > 256
+        ) {
+          return json({ error: "Invalid Compose file paths or service" }, 400);
+        }
+
+        try {
+          let firstFile: Awaited<ReturnType<typeof readComposeFile>> | undefined;
+          for (const filePath of body.paths) {
+            const file = await readComposeFile(config.composeFilesDir, filePath);
+            firstFile ??= file;
+            const serviceOffset = findComposeServiceOffset(file.content, file.path, body.service);
+            if (serviceOffset !== undefined) return json({ file: { ...file, serviceOffset } });
+          }
+          return json({ file: firstFile });
+        } catch (error) {
+          return json(
+            { error: error instanceof Error ? error.message : "Unable to access Compose files" },
             500,
           );
         }
@@ -594,6 +669,36 @@ async function checkDocker(docker: DockerClient): Promise<boolean> {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
+
+async function readLimitedJson(request: Request, maxBytes: number): Promise<unknown> {
+  const contentLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw Object.assign(new Error("Request body is too large"), { status: 413 });
+  }
+  if (!request.body) throw new Error("Missing request body");
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw Object.assign(new Error("Request body is too large"), { status: 413 });
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(body));
 }
 
 function svgAsset(fileName: string): Response {
