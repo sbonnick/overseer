@@ -199,7 +199,6 @@ export const page = String.raw`<!doctype html>
       }
 
       .card-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
-      .card-controls { display: flex; align-items: center; gap: 8px; }
       .btn-card-icon {
         display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0;
         border: 1px solid var(--line); border-radius: 8px; background: transparent;
@@ -243,7 +242,8 @@ export const page = String.raw`<!doctype html>
         color: #a5d6ff;
       }
 
-      .card-footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .card-footer { margin-top: auto; display: flex; align-items: end; justify-content: space-between; gap: 8px; }
+      .card-footer-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 
       .update-badge {
         font-size: 12px; font-weight: 600; color: var(--warn);
@@ -252,14 +252,12 @@ export const page = String.raw`<!doctype html>
       .update-badge.up-to-date { color: var(--muted); }
 
       .btn-update {
-        border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent), transparent 88%);
-        color: var(--accent); border-radius: 8px; padding: 6px 14px;
-        font-size: 13px; font-weight: 600; cursor: pointer;
-        transition: background 0.15s, opacity 0.15s;
+        border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 88%);
+        color: var(--accent); transition: background 0.15s, opacity 0.15s;
       }
       .btn-update:hover:not(:disabled) { background: color-mix(in srgb, var(--accent), transparent 75%); }
       .btn-update:disabled { opacity: 0.5; cursor: default; }
-      .btn-update.success { border-color: var(--good); color: var(--good); }
+      .btn-update.updating svg { animation: spin 0.8s linear infinite; }
 
       .empty, .error {
         border: 1px solid var(--line); border-radius: 18px;
@@ -408,6 +406,7 @@ export const page = String.raw`<!doctype html>
       let openFileRequest = 0;
       let locateServiceRequest = 0;
       const bulkUpdateProjects = new Map();
+      const updatingServiceIds = new Set();
       let updatesCheckedAt = null;
       let tabMovesFocus = false;
       const mobileEditorQuery = window.matchMedia("(max-width: 760px)");
@@ -486,7 +485,7 @@ export const page = String.raw`<!doctype html>
       }
 
       async function refresh(checkForUpdates) {
-        if (isRefreshing) return;
+        if (isRefreshing) return false;
         isRefreshing = true;
         statusEl.disabled = true;
         setStatus(checkForUpdates ? "Checking updates..." : "Refreshing...", true);
@@ -508,15 +507,36 @@ export const page = String.raw`<!doctype html>
           currentProjects = data.projects;
           render(currentProjects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 5000);
+          return true;
         } catch (error) {
           setStatus("Docker unavailable", false);
           projectsEl.innerHTML = '<div class="error"><h2>Unable to load projects</h2><p class="subtle">'
             + escapeHtml(error.message) + '</p></div>';
           pollTimer = setTimeout(refresh, 5000);
+          return false;
         } finally {
           isRefreshing = false;
           statusEl.disabled = false;
         }
+      }
+
+      async function refreshWhenIdle() {
+        const deadline = Date.now() + 95000;
+        while (isRefreshing && Date.now() < deadline) {
+          await new Promise(function(resolve) { setTimeout(resolve, 100); });
+        }
+        if (isRefreshing) return false;
+        if (pollTimer) clearTimeout(pollTimer);
+        return await refresh();
+      }
+
+      async function reconcileUpdatedService(serviceId) {
+        if (await refreshWhenIdle()) {
+          updatingServiceIds.delete(serviceId);
+          render(currentProjects);
+          return;
+        }
+        setTimeout(function() { reconcileUpdatedService(serviceId); }, 5000);
       }
 
       function render(items) {
@@ -912,7 +932,8 @@ export const page = String.raw`<!doctype html>
       function renderProject(project) {
         const refreshDisabled = Boolean(project.refreshDisabledReason);
         const availableUpdates = project.services.filter(function(service) {
-          return service.update?.hasUpdate && !service.update?.updating;
+          return service.update?.hasUpdate && !service.update?.updating
+            && !updatingServiceIds.has(service.id);
         }).length;
         const bulkUpdate = bulkUpdateProjects.get(project.name);
         const anyBulkUpdate = bulkUpdateProjects.size > 0;
@@ -957,16 +978,7 @@ export const page = String.raw`<!doctype html>
             + '<div class="service-title">' + renderServiceIcon(service)
             + '<div class="service-details"><div class="card-name">' + escapeHtml(service.displayName || service.name) + '</div>'
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
-            + '<div class="card-controls">'
-              + '<button class="btn-card-icon btn-edit-compose" type="button"'
-                + (service.composeEditorFiles?.length
-                  ? ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" data-paths="' + escapeHtml(JSON.stringify(service.composeEditorFiles)) + '" data-compose-service="' + escapeHtml(service.composeService || service.name) + '" title="Edit compose configuration" aria-label="Edit compose configuration for ' + escapeHtml(service.displayName || service.name) + '"'
-                  : ' disabled title="Compose file is not exposed by COMPOSE_FILES_DIR" aria-label="Compose configuration is not exposed for editing"')
-                + '>'
-                + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>'
-              + '</button>'
-              + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
-            + '</div>'
+            + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
           + '</div>'
           + (showImage ? '<div class="card-image">' + escapeHtml(service.image) + '</div>' : "")
           + renderUrls(service.routes)
@@ -1031,28 +1043,46 @@ export const page = String.raw`<!doctype html>
       function renderFooter(service, bulkUpdating) {
         var update = service.update;
         if (!update) {
-          return '<div class="card-footer"><span class="subtle" style="font-size:12px">Checking...</span></div>';
+          return renderCardFooter('<span class="subtle" style="font-size:12px">Checking...</span>', service, "");
         }
-        if (update.updating) {
-          return '<div class="card-footer">'
-            + '<span class="update-badge">Updating image...</span>'
-            + '<button class="btn-update" disabled>Updating...</button>'
-          + '</div>';
+        if (update.updating || updatingServiceIds.has(service.id)) {
+          return renderCardFooter('<span class="update-badge">Updating image...</span>', service,
+            renderUpdateButton(service, true, true));
         }
         if (update.error) {
-          return '<div class="card-footer"><span class="subtle" style="font-size:12px" title="'
-            + escapeHtml(update.error) + '">Update check failed</span></div>';
+          return renderCardFooter('<span class="subtle" style="font-size:12px" title="'
+            + escapeHtml(update.error) + '">Update check failed</span>', service, "");
         }
         if (update.hasUpdate) {
-          return '<div class="card-footer">'
-            + '<span class="update-badge">Update available</span>'
-            + '<button class="btn-update" data-id="' + escapeHtml(service.id) + '" data-image="'
-              + escapeHtml(service.image) + '"'
-              + (bulkUpdating ? ' disabled' : '')
-              + ' title="Pull this service image and recreate/restart only this container; compose file changes are not applied">Update image</button>'
-          + '</div>';
+          return renderCardFooter('<span class="update-badge">Update available</span>', service,
+            renderUpdateButton(service, bulkUpdating, false));
         }
-        return '<div class="card-footer"><span class="update-badge up-to-date">Up to date</span></div>';
+        return renderCardFooter('<span class="update-badge up-to-date">Up to date</span>', service, "");
+      }
+
+      function renderCardFooter(status, service, updateButton) {
+        return '<div class="card-footer">' + status + '<div class="card-footer-actions">'
+          + updateButton + renderEditComposeButton(service) + '</div></div>';
+      }
+
+      function renderEditComposeButton(service) {
+        return '<button class="btn-card-icon btn-edit-compose" type="button"'
+          + (service.composeEditorFiles?.length
+            ? ' data-path="' + escapeHtml(service.composeEditorFiles[0]) + '" data-paths="' + escapeHtml(JSON.stringify(service.composeEditorFiles)) + '" data-compose-service="' + escapeHtml(service.composeService || service.name) + '" title="Edit compose configuration" aria-label="Edit compose configuration for ' + escapeHtml(service.displayName || service.name) + '"'
+            : ' disabled title="Compose file is not exposed by COMPOSE_FILES_DIR" aria-label="Compose configuration is not exposed for editing"')
+          + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></button>';
+      }
+
+      function renderUpdateButton(service, disabled, updating) {
+        return '<button class="btn-card-icon btn-update' + (updating ? ' updating' : '') + '" type="button"'
+          + (updating ? '' : ' data-id="' + escapeHtml(service.id) + '" data-image="' + escapeHtml(service.image) + '"')
+          + (disabled ? ' disabled' : '')
+          + ' title="' + (updating
+            ? 'Updating container image'
+            : 'Pull image and recreate/restart only this container; Compose file changes are not applied') + '"'
+          + ' aria-label="' + (updating ? 'Updating image for ' : 'Update image for ')
+            + escapeHtml(service.displayName || service.name) + '">'
+          + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg></button>';
       }
 
       projectsEl.addEventListener("click", async function(e) {
@@ -1115,30 +1145,29 @@ export const page = String.raw`<!doctype html>
         const service = currentProjects.flatMap(function(project) { return project.services; })
           .find(function(item) { return item.id === btn.dataset.id; });
         if (!service) return;
-        btn.disabled = true;
-        btn.textContent = "Updating...";
+        if (pollTimer) clearTimeout(pollTimer);
+        updatingServiceIds.add(service.id);
+        render(currentProjects);
 
         try {
           const data = await updateService(service);
-          btn.textContent = "Updated";
-          btn.classList.add("success");
           if (service.isSelf && (data.retireContainerId || data.restartContainerId)) {
             await new Promise(function(resolve) { setTimeout(resolve, 500); });
             if (!await waitForOverseer()) throw new Error("Overseer did not become ready after updating");
           }
-          if (pollTimer) clearTimeout(pollTimer);
-          refresh();
+          reconcileUpdatedService(service.id);
         } catch (error) {
           // Updating Overseer briefly disconnects the proxy before its replacement is ready.
           if (service.isSelf && isTemporaryGatewayError(error)) {
             if (await waitForOverseer()) {
-              refresh();
+              reconcileUpdatedService(service.id);
               return;
             }
             error = new Error("Overseer did not become ready after updating");
           }
-          btn.disabled = false;
-          btn.textContent = "Update image";
+          updatingServiceIds.delete(service.id);
+          render(currentProjects);
+          refresh();
           alert("Update failed for " + service.image + ":\n" + error.message);
         }
       });
@@ -1186,6 +1215,9 @@ export const page = String.raw`<!doctype html>
         render(currentProjects);
 
         for (const service of services) {
+          updatingServiceIds.add(service.id);
+          render(currentProjects);
+          let confirmed = false;
           try {
             const data = await updateServiceWhenAvailable(service);
             if (service.isSelf && (data.retireContainerId || data.restartContainerId)) {
@@ -1196,6 +1228,7 @@ export const page = String.raw`<!doctype html>
                 throw error;
               }
             }
+            confirmed = true;
           } catch (error) {
             if (error.uncertain || isTemporaryGatewayError(error)) {
               const ready = service.isSelf ? await waitForOverseer() : true;
@@ -1209,20 +1242,14 @@ export const page = String.raw`<!doctype html>
               failures.push({ service, error });
             }
           }
+          updatingServiceIds.delete(service.id);
+          if (confirmed && service.update) service.update.hasUpdate = false;
           progress.completed += 1;
           render(currentProjects);
         }
 
         bulkUpdateProjects.delete(projectName);
-        const refreshDeadline = Date.now() + 35000;
-        while (isRefreshing && Date.now() < refreshDeadline) {
-          await new Promise(function(resolve) { setTimeout(resolve, 100); });
-        }
-        if (isRefreshing) {
-          refreshError = "Project status refresh timed out.";
-        }
-        if (pollTimer) clearTimeout(pollTimer);
-        if (!isRefreshing) await refresh();
+        if (!await refreshWhenIdle()) refreshError = "Project status refresh timed out.";
         if (failures.length || unconfirmed.length || refreshError) {
           const confirmed = services.length - failures.length - unconfirmed.length;
           alert("Confirmed " + confirmed + " of " + services.length + " container updates."
