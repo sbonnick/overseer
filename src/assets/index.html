@@ -417,7 +417,7 @@
         try {
           return body ? JSON.parse(body) : {};
         } catch {
-          const error = new Error("Server returned " + response.status + ": " + (body || response.statusText));
+          const error = new Error(`Server returned ${response.status}: ${body || response.statusText}`);
           error.status = response.status;
           throw error;
         }
@@ -437,7 +437,7 @@
             });
             if (response.ok) return true;
           } catch {}
-          await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+          await new Promise((resolve) => { setTimeout(resolve, 1000); });
         }
         return false;
       }
@@ -449,12 +449,12 @@
 
       function setStatus(message, refreshing) {
         statusEl.classList.toggle("refreshing", refreshing);
-        statusEl.innerHTML = refreshIcon + '<span>' + escapeHtml(message) + '</span>';
+        statusEl.innerHTML = `${refreshIcon}<span>${escapeHtml(message)}</span>`;
       }
 
       function renderUpdateStatus() {
         setStatus(updatesCheckedAt
-          ? "Updates checked " + formatSince(updatesCheckedAt)
+          ? `Updates checked ${formatSince(updatesCheckedAt)}`
           : "Checking updates...", false);
       }
 
@@ -522,7 +522,7 @@
       async function refreshWhenIdle() {
         const deadline = Date.now() + 95000;
         while (isRefreshing && Date.now() < deadline) {
-          await new Promise(function(resolve) { setTimeout(resolve, 100); });
+          await new Promise((resolve) => { setTimeout(resolve, 100); });
         }
         if (isRefreshing) return false;
         if (pollTimer) clearTimeout(pollTimer);
@@ -535,7 +535,7 @@
           render(currentProjects);
           return;
         }
-        setTimeout(function() { reconcileUpdatedService(serviceId); }, 5000);
+        setTimeout(() => { reconcileUpdatedService(serviceId); }, 5000);
       }
 
       function render(items) {
@@ -551,15 +551,13 @@
           if (!child.matches(".project")) child.remove();
         }
 
-        const projectNames = new Set(items.map(function(project) { return project.name; }));
+        const projectNames = new Set(items.map((project) => project.name));
         for (const projectEl of Array.from(projectsEl.querySelectorAll(".project"))) {
           if (!projectNames.has(projectEl.dataset.project)) projectEl.remove();
         }
 
         for (const project of items) {
-          let projectEl = Array.from(projectsEl.querySelectorAll(".project")).find(function(element) {
-            return element.dataset.project === project.name;
-          });
+          let projectEl = Array.from(projectsEl.querySelectorAll(".project")).find((element) => element.dataset.project === project.name);
           if (!projectEl) {
             projectEl = createElement(renderProject(project));
             projectsEl.append(projectEl);
@@ -584,14 +582,12 @@
 
         const cards = projectEl.querySelector(":scope > .cards");
         const nextCards = nextProject.querySelector(":scope > .cards");
-        const serviceIds = new Set(Array.from(nextCards.children).map(function(card) { return card.dataset.service; }));
+        const serviceIds = new Set(Array.from(nextCards.children).map((card) => card.dataset.service));
         for (const card of Array.from(cards.children)) {
           if (!serviceIds.has(card.dataset.service)) card.remove();
         }
         for (const nextCard of Array.from(nextCards.children)) {
-          const currentCard = Array.from(cards.children).find(function(card) {
-            return card.dataset.service === nextCard.dataset.service;
-          });
+          const currentCard = Array.from(cards.children).find((card) => card.dataset.service === nextCard.dataset.service);
           if (!currentCard) {
             cards.append(nextCard);
           } else {
@@ -617,18 +613,16 @@
             return;
           }
 
-          fileList.innerHTML = data.files.map(function(file) {
-            return '<button class="file-item" type="button" data-path="' + escapeHtml(file.path) + '">'
+          fileList.innerHTML = data.files.map((file) => '<button class="file-item" type="button" data-path="' + escapeHtml(file.path) + '">'
               + escapeHtml(file.path) + '<br><span class="subtle">'
               + formatBytes(file.size) + ' · ' + new Date(file.modifiedAt).toLocaleString()
-              + '</span></button>';
-          }).join("");
-          Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
+              + '</span></button>').join("");
+          Array.from(fileList.querySelectorAll(".file-item")).forEach((item) => {
             item.classList.toggle("active", item.dataset.path === currentFilePath);
           });
         } catch (error) {
           filesRoot.textContent = "Unable to load files";
-          fileList.innerHTML = '<div class="error"><p>' + escapeHtml(error.message) + '</p></div>';
+          fileList.innerHTML = `<div class="error"><p>${escapeHtml(error.message)}</p></div>`;
         }
       }
 
@@ -638,7 +632,7 @@
         editorStatus.textContent = "Opening...";
         saveFile.disabled = true;
         composeTextarea.disabled = true;
-        Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
+        Array.from(editorTools.querySelectorAll("button")).forEach((button) => {
           button.disabled = true;
         });
         try {
@@ -649,7 +643,7 @@
               body: JSON.stringify({ paths: servicePaths, service: serviceName })
             })
             : await fetch("/api/compose-files/content?path=" + encodeURIComponent(path)
-              + (serviceName ? "&service=" + encodeURIComponent(serviceName) : ""));
+              + (serviceName ? `&service=${encodeURIComponent(serviceName)}` : ""));
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Unable to open file");
           if (requestId !== openFileRequest) return;
@@ -661,7 +655,7 @@
             ? "Docker Compose JSON editor"
             : "Docker Compose YAML editor");
           composeTextarea.disabled = false;
-          Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
+          Array.from(editorTools.querySelectorAll("button")).forEach((button) => {
             button.disabled = false;
           });
           composeTextarea.value = data.file.content;
@@ -669,7 +663,7 @@
           composeTextarea.scrollLeft = 0;
           renderHighlight();
           setDirty(false);
-          Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
+          Array.from(fileList.querySelectorAll(".file-item")).forEach((item) => {
             item.classList.toggle("active", item.dataset.path === currentFilePath);
           });
           setFileMenuOpen(false);
@@ -677,7 +671,7 @@
         } catch (error) {
           if (requestId !== openFileRequest) return;
           composeTextarea.disabled = !currentFilePath;
-          Array.from(editorTools.querySelectorAll("button")).forEach(function(button) {
+          Array.from(editorTools.querySelectorAll("button")).forEach((button) => {
             button.disabled = !currentFilePath;
           });
           setDirty(Boolean(currentFilePath) && composeTextarea.value !== lastSavedContent);
@@ -690,7 +684,7 @@
         composeTextarea.blur();
         composeTextarea.setSelectionRange(position, position);
         composeTextarea.focus();
-        requestAnimationFrame(function() {
+        requestAnimationFrame(() => {
           if (position > 0) composeTextarea.scrollTop = Math.max(0,
             composeTextarea.scrollTop - composeTextarea.clientHeight * 0.2);
           composeTextarea.scrollLeft = 0;
@@ -705,7 +699,7 @@
         setDirty(contentToSave !== lastSavedContent);
         editorStatus.textContent = "Saving...";
         try {
-          const response = await fetch("/api/compose-files/content?path=" + encodeURIComponent(currentFilePath), {
+          const response = await fetch(`/api/compose-files/content?path=${encodeURIComponent(currentFilePath)}`, {
             method: "PUT",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ content: contentToSave })
@@ -717,7 +711,7 @@
           isSaving = false;
           setDirty(composeTextarea.value !== lastSavedContent);
           await loadComposeFiles();
-          Array.from(fileList.querySelectorAll(".file-item")).forEach(function(item) {
+          Array.from(fileList.querySelectorAll(".file-item")).forEach((item) => {
             item.classList.toggle("active", item.dataset.path === currentFilePath);
           });
         } catch (error) {
@@ -732,7 +726,7 @@
           ? highlightJson(composeTextarea.value)
           : highlightYaml(composeTextarea.value)) || "\n";
         highlightedYaml.style.width = editorWrap.classList.contains("wrap-lines")
-          ? composeTextarea.clientWidth + "px"
+          ? `${composeTextarea.clientWidth}px`
           : "max-content";
         syncHighlightScroll();
       }
@@ -786,8 +780,8 @@
         let firstRemoved = 0;
         let totalRemoved = 0;
 
-        const changed = lines.map(function(line, index) {
-          if (!outdent) return "  " + line;
+        const changed = lines.map((line, index) => {
+          if (!outdent) return `  ${line}`;
           const removed = line.startsWith("  ") ? 2 : line.startsWith(" ") ? 1 : 0;
           if (index === 0) firstRemoved = removed;
           totalRemoved += removed;
@@ -809,12 +803,12 @@
       }
 
       function highlightYaml(value) {
-        return value.split("\n").map(function(line) {
+        return value.split("\n").map((line) => {
           const commentIndex = findYamlComment(line);
           let code = commentIndex < 0 ? line : line.slice(0, commentIndex);
           const comment = commentIndex < 0
             ? ""
-            : '<span class="yaml-comment">' + escapeHtml(line.slice(commentIndex)) + '</span>';
+            : `<span class="yaml-comment">${escapeHtml(line.slice(commentIndex))}</span>`;
           let prefix = "";
           const key = code.match(/^(\s*-?\s*)([A-Za-z0-9_.-]+)(\s*:)/);
           if (key) {
@@ -853,7 +847,7 @@
             : match[2] ? "yaml-var"
             : match[3] ? "yaml-bool"
             : "syntax-number";
-          html += '<span class="' + className + '">' + escapeHtml(match[0]) + '</span>';
+          html += `<span class="${className}">${escapeHtml(match[0])}</span>`;
           index = match.index + match[0].length;
         }
         return html + escapeHtml(value.slice(index));
@@ -870,9 +864,9 @@
             html += '<span class="' + className + '">' + escapeHtml(match[1]) + '</span>'
               + escapeHtml(match[2] || "");
           } else if (match[3]) {
-            html += '<span class="syntax-number">' + escapeHtml(match[3]) + '</span>';
+            html += `<span class="syntax-number">${escapeHtml(match[3])}</span>`;
           } else {
-            html += '<span class="yaml-bool">' + escapeHtml(match[0]) + '</span>';
+            html += `<span class="yaml-bool">${escapeHtml(match[0])}</span>`;
           }
           index = match.index + match[0].length;
         }
@@ -907,7 +901,7 @@
         }
         loadComposeFiles();
         setFileMenuOpen(!currentFilePath);
-        requestAnimationFrame(function() {
+        requestAnimationFrame(() => {
           renderHighlight();
           (currentFilePath ? composeTextarea : fileMenuToggle).focus();
         });
@@ -923,22 +917,20 @@
       }
 
       function formatBytes(bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
-        return (bytes / 1024 / 1024).toFixed(1) + " MB";
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
       }
 
       function renderProject(project) {
         const refreshDisabled = Boolean(project.refreshDisabledReason);
-        const availableUpdates = project.services.filter(function(service) {
-          return service.update?.hasUpdate && !service.update?.updating
-            && !updatingServiceIds.has(service.id);
-        }).length;
+        const availableUpdates = project.services.filter((service) => service.update?.hasUpdate && !service.update?.updating
+            && !updatingServiceIds.has(service.id)).length;
         const bulkUpdate = bulkUpdateProjects.get(project.name);
         const anyBulkUpdate = bulkUpdateProjects.size > 0;
         const bulkLabel = bulkUpdate
-          ? "Updating " + bulkUpdate.completed + "/" + bulkUpdate.total
-          : availableUpdates ? "Update all (" + availableUpdates + ")" : "All up to date";
+          ? `Updating ${bulkUpdate.completed}/${bulkUpdate.total}`
+          : availableUpdates ? `Update all (${availableUpdates})` : "All up to date";
         return '<article class="project" data-project="' + escapeHtml(project.name) + '">'
           + '<div class="project-head">'
             + '<div><h2>' + escapeHtml(project.name) + '</h2>'
@@ -951,7 +943,7 @@
                 + escapeHtml(bulkLabel) + '</button>'
               + '<button class="btn btn-refresh-project" type="button" data-project="'
                 + escapeHtml(project.name) + '"'
-                + (refreshDisabled || anyBulkUpdate ? ' disabled title="' + escapeHtml(project.refreshDisabledReason || "Updates are in progress") + '"' : ' title="Apply saved compose file changes by running docker compose up for this project"')
+                + (refreshDisabled || anyBulkUpdate ? ` disabled title="${escapeHtml(project.refreshDisabledReason || "Updates are in progress")}"` : ' title="Apply saved compose file changes by running docker compose up for this project"')
                 + '>Apply compose changes</button>'
               + '<div class="stats">'
                 + '<span class="pill">' + project.runningCount + "/" + project.serviceCount + ' running</span>'
@@ -962,10 +954,8 @@
             + '</div>'
           + '</div>'
           + '<div class="cards">' + project.services
-            .toSorted(function(a, b) {
-              return Number(Boolean(b.update?.hasUpdate || b.update?.updating)) - Number(Boolean(a.update?.hasUpdate || a.update?.updating));
-            })
-            .map(function(service) { return renderCard(service, anyBulkUpdate); }).join("") + '</div>'
+            .toSorted((a, b) => Number(Boolean(b.update?.hasUpdate || b.update?.updating)) - Number(Boolean(a.update?.hasUpdate || a.update?.updating)))
+            .map((service) => renderCard(service, anyBulkUpdate)).join("") + '</div>'
         + '</article>';
       }
 
@@ -979,7 +969,7 @@
             + '<div class="card-role">' + escapeHtml(service.role) + '</div></div></div>'
             + '<div class="' + stateClass + '"><span class="dot"></span>' + escapeHtml(service.state) + '</div>'
           + '</div>'
-          + (showImage ? '<div class="card-image">' + escapeHtml(service.image) + '</div>' : "")
+          + (showImage ? `<div class="card-image">${escapeHtml(service.image)}</div>` : "")
           + renderUrls(service.routes)
           + (showPorts ? renderPorts(service.ports) : "")
           + renderFooter(service, bulkUpdating)
@@ -994,36 +984,32 @@
           || service.labels["io.sbonnick.overseer.self"] === "true";
         const iconUrl = isOverseer
           ? "/assets/overseer.svg"
-          : baseUrl + (service.icon ? "png/" + encodeURIComponent(iconName) : "svg/" + encodeURIComponent(iconName) + ".svg");
-        const fallbackUrl = baseUrl + "svg/docker.svg";
+          : baseUrl + (service.icon ? `png/${encodeURIComponent(iconName)}` : `svg/${encodeURIComponent(iconName)}.svg`);
+        const fallbackUrl = `${baseUrl}svg/docker.svg`;
         return '<img class="service-icon" src="' + iconUrl + '" alt="" aria-hidden="true"'
           + ' onerror="this.onerror=null;this.src=\'' + fallbackUrl + '\'">';
       }
 
       function renderUrls(routes) {
         if (!routes.length) return '<div class="subtle" style="font-size:13px">No Traefik routes</div>';
-        const links = routes.flatMap(function(route) {
-          return route.hostnames.map(function(host) {
+        const links = routes.flatMap((route) => route.hostnames.map((host) => {
             const url = routeUrl(host, route.tls);
             if (!url) return "";
             return '<div class="url"><a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">'
               + escapeHtml(host) + '</a></div>';
-          });
-        }).filter(Boolean).join("");
+          })).filter(Boolean).join("");
         if (!links) return '<div class="subtle" style="font-size:13px">No valid Traefik routes</div>';
-        return '<div class="urls">' + links + '</div>';
+        return `<div class="urls">${links}</div>`;
       }
 
       function routeUrl(host, tls) {
         try {
           if (host !== host.trim()) return null;
-          const url = new URL((tls ? "https" : "http") + "://" + host);
+          const url = new URL(`${tls ? "https" : "http"}://${host}`);
           const hostname = url.hostname;
           const validHostname = hostname === "localhost"
             || (hostname.startsWith("[") && hostname.endsWith("]"))
-            || hostname.split(".").every(function(label) {
-              return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label);
-            });
+            || hostname.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
           if (!hostname || !validHostname || url.username || url.password
             || url.pathname !== "/" || url.search || url.hash) return null;
           return url.href;
@@ -1034,9 +1020,7 @@
 
       function renderPorts(ports) {
         if (!ports.length) return "";
-        return '<div class="ports">' + ports.map(function(p) {
-          return '<span class="port">' + escapeHtml(p) + '</span>';
-        }).join("") + '</div>';
+        return `<div class="ports">${ports.map((p) => `<span class="port">${escapeHtml(p)}</span>`).join("")}</div>`;
       }
 
       function renderFooter(service, bulkUpdating) {
@@ -1073,7 +1057,7 @@
 
       function renderUpdateButton(service, disabled, updating) {
         return '<button class="btn-card-icon btn-update' + (updating ? ' updating' : '') + '" type="button"'
-          + (updating ? '' : ' data-id="' + escapeHtml(service.id) + '" data-image="' + escapeHtml(service.image) + '"')
+          + (updating ? '' : ` data-id="${escapeHtml(service.id)}" data-image="${escapeHtml(service.image)}"`)
           + (disabled ? ' disabled' : '')
           + ' title="' + (updating
             ? 'Updating container image'
@@ -1083,7 +1067,7 @@
           + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg></button>';
       }
 
-      projectsEl.addEventListener("click", async function(e) {
+      projectsEl.addEventListener("click", async (e) => {
         const editComposeBtn = e.target.closest(".btn-edit-compose");
         if (editComposeBtn && !editComposeBtn.disabled) {
           if (isSaving) {
@@ -1140,8 +1124,8 @@
 
         const btn = e.target.closest(".btn-update");
         if (!btn || btn.disabled || bulkUpdateProjects.size) return;
-        const service = currentProjects.flatMap(function(project) { return project.services; })
-          .find(function(item) { return item.id === btn.dataset.id; });
+        const service = currentProjects.flatMap((project) => project.services)
+          .find((item) => item.id === btn.dataset.id);
         if (!service) return;
         if (pollTimer) clearTimeout(pollTimer);
         updatingServiceIds.add(service.id);
@@ -1150,28 +1134,29 @@
         try {
           const data = await updateService(service);
           if (service.isSelf && (data.retireContainerId || data.restartContainerId)) {
-            await new Promise(function(resolve) { setTimeout(resolve, 500); });
+            await new Promise((resolve) => { setTimeout(resolve, 500); });
             if (!await waitForOverseer()) throw new Error("Overseer did not become ready after updating");
           }
           reconcileUpdatedService(service.id);
         } catch (error) {
+          let failure = error;
           // Updating Overseer briefly disconnects the proxy before its replacement is ready.
           if (service.isSelf && isTemporaryGatewayError(error)) {
             if (await waitForOverseer()) {
               reconcileUpdatedService(service.id);
               return;
             }
-            error = new Error("Overseer did not become ready after updating");
+            failure = new Error("Overseer did not become ready after updating");
           }
           updatingServiceIds.delete(service.id);
           render(currentProjects);
           refresh();
-          alert("Update failed for " + service.image + ":\n" + error.message);
+          alert(`Update failed for ${service.image}:\n${failure.message}`);
         }
       });
 
       async function updateService(service) {
-        const response = await fetch("/api/services/" + encodeURIComponent(service.id) + "/update", {
+        const response = await fetch(`/api/services/${encodeURIComponent(service.id)}/update`, {
           method: "POST",
           signal: AbortSignal.timeout(5 * 60 * 1000)
         });
@@ -1191,17 +1176,17 @@
             return await updateService(service);
           } catch (error) {
             if (error.status !== 409 || Date.now() >= deadline) throw error;
-            await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+            await new Promise((resolve) => { setTimeout(resolve, 1000); });
           }
         }
       }
 
       async function updateProjectServices(projectName) {
-        const project = currentProjects.find(function(item) { return item.name === projectName; });
+        const project = currentProjects.find((item) => item.name === projectName);
         if (!project || bulkUpdateProjects.size) return;
         const services = project.services
-          .filter(function(service) { return service.update?.hasUpdate && !service.update?.updating; })
-          .toSorted(function(a, b) { return Number(Boolean(a.isSelf)) - Number(Boolean(b.isSelf)); });
+          .filter((service) => service.update?.hasUpdate && !service.update?.updating)
+          .toSorted((a, b) => Number(Boolean(a.isSelf)) - Number(Boolean(b.isSelf)));
         if (!services.length) return;
 
         if (pollTimer) clearTimeout(pollTimer);
@@ -1219,7 +1204,7 @@
           try {
             const data = await updateServiceWhenAvailable(service);
             if (service.isSelf && (data.retireContainerId || data.restartContainerId)) {
-              await new Promise(function(resolve) { setTimeout(resolve, 500); });
+              await new Promise((resolve) => { setTimeout(resolve, 500); });
               if (!await waitForOverseer()) {
                 const error = new Error("Overseer did not become ready after updating");
                 error.uncertain = true;
@@ -1252,13 +1237,9 @@
           const confirmed = services.length - failures.length - unconfirmed.length;
           alert("Confirmed " + confirmed + " of " + services.length + " container updates."
             + (unconfirmed.length ? " Unconfirmed:\n" : "\n")
-            + unconfirmed.map(function(result) {
-              return (result.service.displayName || result.service.name) + ": " + result.error.message;
-            }).join("\n")
+            + unconfirmed.map((result) => `${result.service.displayName || result.service.name}: ${result.error.message}`).join("\n")
             + (failures.length ? (unconfirmed.length ? "\nFailed:\n" : "Failed:\n") : "")
-            + failures.map(function(failure) {
-              return (failure.service.displayName || failure.service.name) + ": " + failure.error.message;
-            }).join("\n") + (refreshError ? "\n" + refreshError : ""));
+            + failures.map((failure) => `${failure.service.displayName || failure.service.name}: ${failure.error.message}`).join("\n") + (refreshError ? `\n${refreshError}` : ""));
         }
       }
 
@@ -1269,7 +1250,7 @@
         setRefreshOverlay(true);
 
         try {
-          const response = await fetch("/api/projects/" + encodeURIComponent(project) + "/refresh", {
+          const response = await fetch(`/api/projects/${encodeURIComponent(project)}/refresh`, {
             method: "POST"
           });
           const data = await readJson(response);
@@ -1280,32 +1261,33 @@
           setRefreshOverlay(false);
           refresh();
         } catch (error) {
+          let failure = error;
           if (isTemporaryGatewayError(error)) {
             if (await waitForOverseer()) {
               setRefreshOverlay(false);
               refresh();
               return;
             }
-            error = new Error("Overseer did not become ready after applying compose changes");
+            failure = new Error("Overseer did not become ready after applying compose changes");
           }
           setRefreshOverlay(false);
           btn.disabled = false;
           btn.textContent = "Apply compose changes";
-          alert("Refresh failed for " + project + ":\n" + error.message);
+          alert(`Refresh failed for ${project}:\n${failure.message}`);
         }
       }
 
-      filesToggle.addEventListener("click", function() {
+      filesToggle.addEventListener("click", () => {
         setEditorOpen(true);
       });
 
-      fileMenuToggle.addEventListener("click", function() {
+      fileMenuToggle.addEventListener("click", () => {
         setFileMenuOpen(!composeEditor.classList.contains("files-open"));
       });
-      fileBackdrop.addEventListener("click", function() { setFileMenuOpen(false); });
+      fileBackdrop.addEventListener("click", () => { setFileMenuOpen(false); });
       closeEditor.addEventListener("click", closeComposeEditor);
 
-      composeEditor.addEventListener("keydown", function(e) {
+      composeEditor.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && e.target !== composeTextarea && composeEditor.classList.contains("files-open")) {
           e.preventDefault();
           setFileMenuOpen(false);
@@ -1314,7 +1296,7 @@
         }
         if (e.key !== "Tab" || e.defaultPrevented) return;
         const focusable = Array.from(composeEditor.querySelectorAll("button:not(:disabled), textarea:not(:disabled)"))
-          .filter(function(element) { return !element.closest("[inert]") && element.tabIndex !== -1; });
+          .filter((element) => !element.closest("[inert]") && element.tabIndex !== -1);
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (e.shiftKey && document.activeElement === first) {
@@ -1326,24 +1308,24 @@
         }
       });
 
-      statusEl.addEventListener("click", function() {
+      statusEl.addEventListener("click", () => {
         if (pollTimer) clearTimeout(pollTimer);
         refresh(true);
       });
 
-      portsToggle.addEventListener("click", function() {
+      portsToggle.addEventListener("click", () => {
         showPorts = !showPorts;
         portsToggle.setAttribute("aria-checked", String(showPorts));
         render(currentProjects);
       });
 
-      imageToggle.addEventListener("click", function() {
+      imageToggle.addEventListener("click", () => {
         showImage = !showImage;
         imageToggle.setAttribute("aria-checked", String(showImage));
         render(currentProjects);
       });
 
-      fileList.addEventListener("click", function(e) {
+      fileList.addEventListener("click", (e) => {
         const item = e.target.closest(".file-item");
         if (!item) return;
         if (isSaving) {
@@ -1356,20 +1338,20 @@
         openComposeFile(item.dataset.path);
       });
 
-      composeTextarea.addEventListener("input", function() {
+      composeTextarea.addEventListener("input", () => {
         renderHighlight();
         setDirty(composeTextarea.value !== lastSavedContent);
       });
 
       composeTextarea.addEventListener("scroll", syncHighlightScroll);
-      composeTextarea.addEventListener("blur", function() {
+      composeTextarea.addEventListener("blur", () => {
         tabMovesFocus = false;
       });
-      window.addEventListener("resize", function() {
+      window.addEventListener("resize", () => {
         renderHighlight();
       });
 
-      editorTools.addEventListener("click", function(e) {
+      editorTools.addEventListener("click", (e) => {
         const button = e.target.closest("button");
         if (!button || button.disabled) return;
         if (button === wrapLines) {
@@ -1379,7 +1361,7 @@
         changeIndent(button.dataset.editorAction === "outdent");
       });
 
-      composeTextarea.addEventListener("keydown", function(e) {
+      composeTextarea.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
           tabMovesFocus = true;
           return;
@@ -1401,16 +1383,14 @@
       });
 
       saveFile.addEventListener("click", saveComposeFile);
-      window.addEventListener("beforeunload", function(e) {
+      window.addEventListener("beforeunload", (e) => {
         if (composeTextarea.value === lastSavedContent) return;
         e.preventDefault();
         e.returnValue = "";
       });
 
       function escapeHtml(value) {
-        return String(value).replace(/[&<>'"]/g, function(char) {
-          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char];
-        });
+        return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
       }
 
       refresh();
