@@ -9,10 +9,12 @@
     "test": "bun test",
     "check": "bunx biome check . && bunx tsc --noEmit",
     "format": "bunx biome format --write .",
-    "lint": "bunx biome lint ."
+    "lint": "bunx biome lint .",
+    "scan": "aislop scan"
   },
   "devDependencies": {
     "@biomejs/biome": "latest",
+    "aislop": "^0.13.1",
     "bun-types": "latest",
     "typescript": "latest"
   }

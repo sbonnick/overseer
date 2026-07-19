@@ -9,52 +9,6 @@ export function findComposeServiceOffset(
     : findYamlServiceOffset(content, serviceName);
 }
 
-function findYamlServiceOffset(content: string, serviceName: string): number | undefined {
-  const lines = content.split("\n");
-  let offset = 0;
-  let rootIndent: number | undefined;
-  let servicesIndent: number | undefined;
-  let serviceIndent: number | undefined;
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex] ?? "";
-    const code = stripYamlComment(line);
-    const singleLineKey = parseYamlKey(code);
-    const multilineKey = singleLineKey ? undefined : parseMultilineYamlKey(lines, lineIndex);
-    const key = singleLineKey ?? multilineKey?.key;
-    const indent = line.length - line.trimStart().length;
-
-    if (servicesIndent === undefined) {
-      if (key) {
-        rootIndent = Math.min(rootIndent ?? indent, indent);
-        if (key.name === "services" && indent === rootIndent) {
-          const flowStart = code.slice(key.end).search(/\S/);
-          if (flowStart >= 0 && code[key.end + flowStart] === "{") {
-            return findYamlFlowProperty(content, offset + key.end + flowStart, serviceName);
-          }
-          servicesIndent = indent;
-        }
-      }
-    } else if (code.trim()) {
-      if (indent <= servicesIndent) return undefined;
-      if (key) {
-        serviceIndent ??= indent;
-        if (indent === serviceIndent && key.name === serviceName) {
-          return offset + key.offset;
-        }
-      }
-    }
-
-    const consumedLines = multilineKey?.consumedLines ?? 0;
-    for (let consumed = 0; consumed <= consumedLines; consumed += 1) {
-      offset += (lines[lineIndex + consumed]?.length ?? 0) + 1;
-    }
-    lineIndex += consumedLines;
-  }
-
-  return undefined;
-}
-
 function parseMultilineYamlKey(
   lines: string[],
   startLine: number,
@@ -224,17 +178,6 @@ function findYamlFlowProperty(
   return undefined;
 }
 
-function findJsonServiceOffset(content: string, serviceName: string): number | undefined {
-  const rootOffset = content.indexOf("{");
-  if (rootOffset < 0) return undefined;
-  const services = findJsonProperty(content, rootOffset, "services");
-  if (!services) return undefined;
-  let servicesObject = services.valueOffset;
-  while (/\s/.test(content[servicesObject] ?? "")) servicesObject += 1;
-  if (content[servicesObject] !== "{") return undefined;
-  return findJsonProperty(content, servicesObject, serviceName)?.keyOffset;
-}
-
 function findJsonProperty(
   content: string,
   objectOffset: number,
@@ -271,4 +214,61 @@ function findJsonProperty(
     }
   }
   return undefined;
+}
+
+function findYamlServiceOffset(content: string, serviceName: string): number | undefined {
+  const lines = content.split("\n");
+  let offset = 0;
+  let rootIndent: number | undefined;
+  let servicesIndent: number | undefined;
+  let serviceIndent: number | undefined;
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? "";
+    const code = stripYamlComment(line);
+    const singleLineKey = parseYamlKey(code);
+    const multilineKey = singleLineKey ? undefined : parseMultilineYamlKey(lines, lineIndex);
+    const key = singleLineKey ?? multilineKey?.key;
+    const indent = line.length - line.trimStart().length;
+
+    if (servicesIndent === undefined) {
+      if (key) {
+        rootIndent = Math.min(rootIndent ?? indent, indent);
+        if (key.name === "services" && indent === rootIndent) {
+          const flowStart = code.slice(key.end).search(/\S/);
+          if (flowStart >= 0 && code[key.end + flowStart] === "{") {
+            return findYamlFlowProperty(content, offset + key.end + flowStart, serviceName);
+          }
+          servicesIndent = indent;
+        }
+      }
+    } else if (code.trim()) {
+      if (indent <= servicesIndent) return undefined;
+      if (key) {
+        serviceIndent ??= indent;
+        if (indent === serviceIndent && key.name === serviceName) {
+          return offset + key.offset;
+        }
+      }
+    }
+
+    const consumedLines = multilineKey?.consumedLines ?? 0;
+    for (let consumed = 0; consumed <= consumedLines; consumed += 1) {
+      offset += (lines[lineIndex + consumed]?.length ?? 0) + 1;
+    }
+    lineIndex += consumedLines;
+  }
+
+  return undefined;
+}
+
+function findJsonServiceOffset(content: string, serviceName: string): number | undefined {
+  const rootOffset = content.indexOf("{");
+  if (rootOffset < 0) return undefined;
+  const services = findJsonProperty(content, rootOffset, "services");
+  if (!services) return undefined;
+  let servicesObject = services.valueOffset;
+  while (/\s/.test(content[servicesObject] ?? "")) servicesObject += 1;
+  if (content[servicesObject] !== "{") return undefined;
+  return findJsonProperty(content, servicesObject, serviceName)?.keyOffset;
 }
