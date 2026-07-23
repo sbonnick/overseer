@@ -181,7 +181,7 @@ async function runComposeHelper(
     Tty: true,
     WorkingDir: workingDir,
     Env: [`DOCKER_HOST=${dockerHost}`],
-    Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d"],
+    Cmd: ["compose", "-p", projectName, ...composeArgs, "up", "-d", "--remove-orphans"],
     HostConfig: { Binds: [`${workingDir}:${workingDir}`, ...socketBind] },
   });
   await docker.startContainer(created.Id);
