@@ -53,11 +53,11 @@ export class UpdateChecker {
     };
   }
 
-  markUpdating(imageRef: string, containerId: string): void {
+  markUpdating(_imageRef: string, containerId: string): void {
     this.updatingContainers.add(containerId);
   }
 
-  clearUpdating(imageRef: string): void {
+  clearUpdating(_imageRef: string): void {
     // Kept for backward compatibility, but updating is now tracked by container ID
   }
 

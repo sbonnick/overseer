@@ -87,7 +87,8 @@ async function resolveServiceImageNames(
       try {
         const imageInfo = await safeDockerCall(docker.inspectImage(service.image), undefined);
         if (imageInfo) {
-          service.image = resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
+          service.image =
+            resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
         }
       } catch {
         // Keep the Docker-provided image ID if it cannot be resolved to a repo tag.
