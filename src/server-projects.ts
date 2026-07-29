@@ -10,11 +10,11 @@ import { isImageId, resolveUpdateImageRef } from "./updates.ts";
 
 export async function getProjectsResponse(context: ServerContext): Promise<Response> {
   try {
-    const containers = await context.docker.listContainers();
-    const traefikRoutes = await discoverTraefikApiRoutes(containers);
+    const containers = await safeDockerCall(context.docker.listContainers(), []);
+    const traefikRoutes = await safeDockerCall(discoverTraefikApiRoutes(containers), new Map());
     const projects = discoverProjects(containers, context.config.projectFilter, traefikRoutes);
     disableProxyRefresh(projects, containers, context);
-    await resolveServiceImageNames(context.docker, projects);
+    await safeDockerCall(resolveServiceImageNames(context.docker, projects), undefined);
     await attachAvailableComposeFiles(projects, containers, context);
     attachRuntimeState(projects, context);
     return json({
@@ -25,6 +25,14 @@ export async function getProjectsResponse(context: ServerContext): Promise<Respo
     });
   } catch (error) {
     return json({ error: errorMessage(error, "Unknown Docker API error") }, 502);
+  }
+}
+
+async function safeDockerCall<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await promise;
+  } catch {
+    return fallback;
   }
 }
 
@@ -46,10 +54,9 @@ async function attachAvailableComposeFiles(
   containers: DockerContainer[],
   context: ServerContext,
 ): Promise<void> {
-  context.state.composePathMappings ??= resolveComposePathMappings(
-    context.docker,
-    containers,
-    context.config.composeFilesDir,
+  context.state.composePathMappings ??= safeDockerCall(
+    resolveComposePathMappings(context.docker, containers, context.config.composeFilesDir),
+    undefined,
   );
   const mappings = await context.state.composePathMappings;
   if (!mappings) {
@@ -78,8 +85,10 @@ async function resolveServiceImageNames(
   await Promise.all(
     services.map(async (service) => {
       try {
-        const imageInfo = await docker.inspectImage(service.image);
-        service.image = resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
+        const imageInfo = await safeDockerCall(docker.inspectImage(service.image), undefined);
+        if (imageInfo) {
+          service.image = resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
+        }
       } catch {
         // Keep the Docker-provided image ID if it cannot be resolved to a repo tag.
       }
