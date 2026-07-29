@@ -32,7 +32,8 @@ async function updateService(encodedId: string, context: ServerContext): Promise
     const containerId = decodeURIComponent(encodedId);
     const imageRef = await getUpdateImageRef(context.docker, containerId);
     const operationId = crypto.randomUUID();
-    const operations = (context.state.updateOperations ??= new Map());
+    context.state.updateOperations ??= new Map();
+    const operations = context.state.updateOperations;
     if (operations.size >= 100) operations.delete(operations.keys().next().value ?? "");
     operations.set(operationId, { status: "running" });
     context.updates.markUpdating(imageRef, containerId);

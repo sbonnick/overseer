@@ -1182,15 +1182,39 @@
             throw error;
           }
           if (response.status !== 202) return data;
+          if (data.operationId) return waitForUpdateOperation(data.operationId, service);
         } catch (error) {
           if (!isTemporaryGatewayError(error)) throw error;
         }
         return waitForServiceUpdate(service);
       }
 
-      async function waitForServiceUpdate(service) {
-        const startedAt = Date.now();
-        const deadline = startedAt + 30 * 60 * 1000;
+      async function waitForUpdateOperation(operationId, service) {
+        const deadline = Date.now() + 60 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => { setTimeout(resolve, 1000); });
+          try {
+            const response = await fetch(`/api/update-operations/${encodeURIComponent(operationId)}`, {
+              cache: "no-store",
+              signal: AbortSignal.timeout(10000)
+            });
+            const data = await readJson(response);
+            if (response.status === 404) return waitForServiceUpdate(service, deadline);
+            if (!response.ok) {
+              const error = new Error(data.error || "Unable to read update status");
+              error.status = response.status;
+              throw error;
+            }
+            if (data.status === "succeeded") return data.result;
+            if (data.status === "failed") throw new Error(data.error || "Container update failed");
+          } catch (error) {
+            if (!isTemporaryGatewayError(error)) throw error;
+          }
+        }
+        return updateConfirmationTimeout();
+      }
+
+      async function waitForServiceUpdate(service, deadline = Date.now() + 60 * 60 * 1000) {
         while (Date.now() < deadline) {
           await new Promise((resolve) => { setTimeout(resolve, 1000); });
           if (!await refreshWhenIdle()) continue;
@@ -1199,9 +1223,11 @@
           if (!current || current.update?.updating || !current.update) continue;
           if (current.update.updateError) throw new Error(current.update.updateError);
           if (!current.update.hasUpdate) return { ok: true, action: "updated", containerId: current.id };
-          if (Date.now() - startedAt < 10000) continue;
-          throw new Error("The container update did not complete");
         }
+        return updateConfirmationTimeout();
+      }
+
+      function updateConfirmationTimeout() {
         const error = new Error("The container update is still in progress and could not be confirmed");
         error.uncertain = true;
         throw error;

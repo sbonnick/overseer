@@ -35,14 +35,30 @@ describe("container updates", () => {
     });
 
     const response = await handleMutationRequest(request, new URL(request.url), context);
+    const accepted = (await response?.json()) as { operationId: string };
 
     expect(response?.status).toBe(202);
+    expect(accepted.operationId).toBeString();
     expect(context.state.dockerMutationActive).toBe(true);
     expect(updates.getStatus(imageRef, container.Id)?.updating).toBe(true);
 
     releasePull?.();
     await waitFor(() => !context.state.dockerMutationActive);
     expect(updates.hasActiveUpdate()).toBe(false);
+
+    const statusRequest = new Request(
+      `http://localhost/api/update-operations/${accepted.operationId}`,
+    );
+    const statusResponse = await handleMutationRequest(
+      statusRequest,
+      new URL(statusRequest.url),
+      context,
+    );
+    expect(statusResponse?.status).toBe(200);
+    expect(await statusResponse?.json()).toMatchObject({
+      status: "succeeded",
+      result: { ok: true, action: "restarted", containerId: container.Id },
+    });
   });
 });
 

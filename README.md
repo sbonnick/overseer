@@ -101,7 +101,8 @@ The recreation preserves all Docker Compose labels, so the new container remains
 |---|---|---|
 | `GET` | `/api/health` | Docker connection status |
 | `GET` | `/api/projects` | All discovered compose projects with services and update status |
-| `POST` | `/api/services/:id/update` | Pull image and recreate/restart the container |
+| `POST` | `/api/services/:id/update` | Start an asynchronous image update and return its operation ID |
+| `GET` | `/api/update-operations/:id` | Read the authoritative result of an image update |
 
 ## Development
 

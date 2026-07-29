@@ -40,6 +40,7 @@ describe("compose editor", () => {
 
   test("treats gateway interruptions as an in-progress update", () => {
     expect(page).toContain("if (response.status !== 202) return data");
+    expect(page).toContain("return waitForUpdateOperation(data.operationId, service)");
     expect(page).toContain("return waitForServiceUpdate(service)");
     expect(page).toContain('setStatus("Container update in progress", true)');
     expect(page).toContain("if (hasActiveClientUpdates())");
