@@ -250,6 +250,18 @@
         display: inline-flex; align-items: center; gap: 4px;
       }
       .update-badge.up-to-date { color: var(--muted); }
+      .update-transition { display: inline-grid; }
+      .update-transition > span { grid-area: 1 / 1; animation: update-transition 8s ease-in-out infinite; }
+      .update-transition > span:last-child { animation-delay: -4s; }
+      @keyframes update-transition {
+        0%, 40% { opacity: 1; }
+        50%, 90% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .update-transition > span { animation: none; }
+        .update-transition > span:last-child { display: none; }
+      }
 
       .btn-update {
         border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 88%);
@@ -1060,10 +1072,34 @@
             + escapeHtml(update.error) + '">Update check failed</span>', service, "");
         }
         if (update.hasUpdate) {
-          return renderCardFooter('<span class="update-badge">Update available</span>', service,
+          return renderCardFooter(renderUpdateTransition(update), service,
             renderUpdateButton(service, bulkUpdating, false));
         }
-        return renderCardFooter('<span class="update-badge up-to-date">Up to date</span>', service, "");
+        return renderCardFooter('<span class="update-badge up-to-date" title="'
+          + escapeHtml(update.currentImageCreated || "Image publication date unavailable") + '">'
+          + escapeHtml(formatImageDate(update.currentImageCreated)) + '</span>', service, "");
+      }
+
+      function renderUpdateTransition(update) {
+        const dateTransition = formatImageDate(update.currentImageCreated) + " → "
+          + formatImageDate(update.newImageCreated);
+        const versionTransition = formatImageVersion(update.currentImageVersion) + " → "
+          + formatImageVersion(update.newImageVersion);
+        return '<span class="update-badge update-transition" aria-label="Image update available: '
+          + escapeHtml(`${dateTransition}; ${versionTransition}`) + '"><span>'
+          + escapeHtml(dateTransition) + '</span><span>' + escapeHtml(versionTransition) + '</span></span>';
+      }
+
+      function formatImageDate(value) {
+        if (!value) return "Unknown date";
+        const date = new Date(value);
+        return Number.isNaN(date.valueOf()) ? "Unknown date" : new Intl.DateTimeFormat(undefined, {
+          year: "numeric", month: "short", day: "numeric"
+        }).format(date);
+      }
+
+      function formatImageVersion(value) {
+        return value || "Unlabeled version";
       }
 
       function renderCardFooter(status, service, updateButton) {

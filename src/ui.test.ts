@@ -64,6 +64,14 @@ describe("compose editor", () => {
     expect(page).toContain("Pull image and recreate/restart only this container");
   });
 
+  test("shows image metadata instead of generic update status text", () => {
+    expect(page).toContain("function renderUpdateTransition(update)");
+    expect(page).toContain("formatImageDate(update.currentImageCreated)");
+    expect(page).toContain("formatImageVersion(update.currentImageVersion)");
+    expect(page).not.toContain(">Up to date<");
+    expect(page).not.toContain(">Update available<");
+  });
+
   test("contains valid editor script syntax", () => {
     const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeDefined();

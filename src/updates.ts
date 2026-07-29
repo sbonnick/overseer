@@ -1,5 +1,11 @@
 import type { DockerClient } from "./docker.ts";
-import { getLocalDigest, getRemoteDigest, hasUpdate, parseImageRef } from "./registry.ts";
+import {
+  getLocalDigest,
+  getRemoteImageMetadata,
+  hasUpdate,
+  imageVersion,
+  parseImageRef,
+} from "./registry.ts";
 
 export type UpdateStatus = {
   hasUpdate: boolean;
@@ -8,6 +14,10 @@ export type UpdateStatus = {
   remoteDigest?: string;
   localDigest?: string;
   localImageId?: string;
+  currentImageCreated?: string;
+  currentImageVersion?: string;
+  newImageCreated?: string;
+  newImageVersion?: string;
   checkedAt: string;
   error?: string;
 };
@@ -109,17 +119,31 @@ export class UpdateChecker {
       const parsed = updateRef ? parseImageRef(updateRef) : null;
 
       let status: UpdateStatus;
+      const currentImageMetadata = {
+        ...(imageInfo.Created ? { currentImageCreated: imageInfo.Created } : {}),
+        ...(imageVersion(imageInfo.Config?.Labels)
+          ? { currentImageVersion: imageVersion(imageInfo.Config?.Labels) }
+          : {}),
+      };
 
       if (!parsed || parsed.digest) {
-        status = { hasUpdate: false, localImageId, checkedAt: new Date().toISOString() };
+        status = {
+          hasUpdate: false,
+          localImageId,
+          checkedAt: new Date().toISOString(),
+          ...currentImageMetadata,
+        };
       } else {
         const localDigest = getLocalDigest(imageInfo.RepoDigests);
-        const remoteDigest = await getRemoteDigest(parsed);
+        const remote = await getRemoteImageMetadata(parsed);
         status = {
-          hasUpdate: hasUpdate(imageInfo.RepoDigests, remoteDigest),
+          hasUpdate: hasUpdate(imageInfo.RepoDigests, remote.digest ?? null),
           localImageId,
-          remoteDigest: remoteDigest ?? undefined,
+          remoteDigest: remote.digest,
           localDigest: localDigest ?? undefined,
+          ...currentImageMetadata,
+          newImageCreated: remote.created,
+          newImageVersion: remote.version,
           checkedAt: new Date().toISOString(),
         };
       }

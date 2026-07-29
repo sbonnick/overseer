@@ -69,6 +69,9 @@ export type DockerImageInspect = {
   RepoTags?: string[];
   RepoDigests?: string[];
   Created?: string;
+  Config?: {
+    Labels?: Record<string, string> | null;
+  };
 };
 
 export type DockerError = Error & { status?: number };

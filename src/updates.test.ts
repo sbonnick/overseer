@@ -1,6 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import type { DockerClient } from "./docker.ts";
+import { imageVersion } from "./registry.ts";
 import { UpdateChecker } from "./updates.ts";
+
+describe("imageVersion", () => {
+  test("prefers the OCI version label", () => {
+    expect(
+      imageVersion({
+        "org.opencontainers.image.version": "2.4.0",
+        "org.label-schema.version": "2.3.0",
+      }),
+    ).toBe("2.4.0");
+  });
+
+  test("supports the legacy label", () => {
+    expect(imageVersion({ "org.label-schema.version": "2.3.0" })).toBe("2.3.0");
+  });
+});
 
 describe("UpdateChecker operation state", () => {
   test("keeps an update visible until it explicitly finishes", () => {

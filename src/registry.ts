@@ -23,6 +23,14 @@ const MANIFEST_ACCEPT = [
   "application/vnd.docker.distribution.manifest.v2+json",
 ].join(", ");
 
+const IMAGE_VERSION_LABELS = ["org.opencontainers.image.version", "org.label-schema.version"];
+
+export type RemoteImageMetadata = {
+  digest?: string;
+  created?: string;
+  version?: string;
+};
+
 export function parseImageRef(ref: string): ParsedImageRef | null {
   let digest: string | undefined;
   let nameAndTag = ref;
@@ -63,45 +71,17 @@ export function parseImageRef(ref: string): ParsedImageRef | null {
 }
 
 export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | null> {
+  return (await getRemoteImageMetadata(parsed)).digest ?? null;
+}
+
+export async function getRemoteImageMetadata(parsed: ParsedImageRef): Promise<RemoteImageMetadata> {
   const reference = parsed.digest ?? parsed.tag;
   const url = `https://${parsed.registry}/v2/${parsed.repository}/manifests/${reference}`;
   const pullScope = `repository:${parsed.repository}:pull`;
-
-  let response = await fetch(url, {
-    headers: { accept: MANIFEST_ACCEPT },
-    redirect: "follow",
-  });
-
-  if (response.status === 401) {
-    const authHeader = response.headers.get("www-authenticate");
-    if (authHeader) {
-      const token = await getAuthToken(authHeader, parsed.registry, pullScope);
-      if (token) {
-        response = await fetch(url, {
-          headers: { accept: MANIFEST_ACCEPT, authorization: `Bearer ${token}` },
-          redirect: "follow",
-        });
-      }
-
-      if (response.status === 401) {
-        const retryToken = await getAuthToken(
-          response.headers.get("www-authenticate") ?? authHeader,
-          parsed.registry,
-          pullScope,
-          true,
-        );
-        if (retryToken && retryToken !== token) {
-          response = await fetch(url, {
-            headers: { accept: MANIFEST_ACCEPT, authorization: `Bearer ${retryToken}` },
-            redirect: "follow",
-          });
-        }
-      }
-    }
-  }
+  const response = await registryRequest(url, parsed.registry, pullScope, MANIFEST_ACCEPT);
 
   if (response.status === 404) {
-    return null;
+    return {};
   }
 
   if (!response.ok) {
@@ -110,7 +90,88 @@ export async function getRemoteDigest(parsed: ParsedImageRef): Promise<string | 
     );
   }
 
-  return response.headers.get("docker-content-digest");
+  const digest = response.headers.get("docker-content-digest") ?? undefined;
+  let manifest = (await response.json().catch(() => null)) as {
+    config?: { digest?: string };
+    manifests?: Array<{ digest?: string; platform?: { os?: string; architecture?: string } }>;
+  } | null;
+  if (!manifest?.config?.digest) {
+    const architecture = process.arch === "x64" ? "amd64" : process.arch;
+    const child =
+      manifest?.manifests?.find(
+        (item) => item.platform?.os === "linux" && item.platform.architecture === architecture,
+      ) ?? manifest?.manifests?.[0];
+    if (child?.digest) {
+      const childResponse = await registryRequest(
+        `https://${parsed.registry}/v2/${parsed.repository}/manifests/${child.digest}`,
+        parsed.registry,
+        pullScope,
+        MANIFEST_ACCEPT,
+      );
+      if (childResponse.ok) {
+        manifest = (await childResponse.json().catch(() => null)) as typeof manifest;
+      }
+    }
+  }
+  const configDigest = manifest?.config?.digest;
+  if (!configDigest) return { digest };
+
+  const configResponse = await registryRequest(
+    `https://${parsed.registry}/v2/${parsed.repository}/blobs/${configDigest}`,
+    parsed.registry,
+    pullScope,
+    "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json",
+  );
+  if (!configResponse.ok) return { digest };
+  const config = (await configResponse.json().catch(() => null)) as {
+    created?: string;
+    config?: { Labels?: Record<string, string> | null };
+  } | null;
+  return {
+    digest,
+    ...(config?.created ? { created: config.created } : {}),
+    ...(imageVersion(config?.config?.Labels)
+      ? { version: imageVersion(config?.config?.Labels) }
+      : {}),
+  };
+}
+
+async function registryRequest(
+  url: string,
+  registry: string,
+  pullScope: string,
+  accept: string,
+): Promise<Response> {
+  let response = await fetch(url, { headers: { accept }, redirect: "follow" });
+  if (response.status !== 401) return response;
+
+  const authHeader = response.headers.get("www-authenticate");
+  if (!authHeader) return response;
+  const token = await getAuthToken(authHeader, registry, pullScope);
+  if (!token) return response;
+  response = await fetch(url, {
+    headers: { accept, authorization: `Bearer ${token}` },
+    redirect: "follow",
+  });
+  if (response.status !== 401) return response;
+
+  const retryToken = await getAuthToken(
+    response.headers.get("www-authenticate") ?? authHeader,
+    registry,
+    pullScope,
+    true,
+  );
+  if (!retryToken || retryToken === token) return response;
+  return fetch(url, {
+    headers: { accept, authorization: `Bearer ${retryToken}` },
+    redirect: "follow",
+  });
+}
+
+export function imageVersion(
+  labels: Record<string, string> | null | undefined,
+): string | undefined {
+  return IMAGE_VERSION_LABELS.map((label) => labels?.[label]).find(Boolean);
 }
 
 async function getAuthToken(

@@ -83,7 +83,7 @@ For each compose-managed image, overseer:
 3. Queries the registry's v2 manifest endpoint (handling Bearer auth challenges).
 4. Compares the remote `Docker-Content-Digest` with the local repo digest.
 
-If they differ, the card shows an "Update available" badge with an Update button.
+Each card shows the current image creation date. When an update is available, the card alternates between the current-to-new image creation date and OCI version-label transitions, with an Update button.
 
 ### Applying updates
 
