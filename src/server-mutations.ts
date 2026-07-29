@@ -24,10 +24,10 @@ async function updateService(encodedId: string, context: ServerContext): Promise
 
   context.state.dockerMutationActive = true;
   let deferredMutation = false;
-  let imageRef: string | undefined;
+  let containerId: string | undefined;
   try {
-    const containerId = decodeURIComponent(encodedId);
-    imageRef = await getUpdateImageRef(context.docker, containerId);
+    containerId = decodeURIComponent(encodedId);
+    const imageRef = await getUpdateImageRef(context.docker, containerId);
     context.updates.markUpdating(imageRef, containerId);
     const result = await applyUpdate(context.docker, context.updates, containerId);
     const deferredId = result.retireContainerId ?? result.restartContainerId;
@@ -37,9 +37,9 @@ async function updateService(encodedId: string, context: ServerContext): Promise
     }
     return json(result);
   } catch (error) {
-    if (imageRef) context.updates.clearUpdating(imageRef);
     return json({ error: errorMessage(error, "Unknown error") }, 500);
   } finally {
+    if (containerId) context.updates.clearUpdatingByContainerId(containerId);
     if (!deferredMutation) context.state.dockerMutationActive = false;
   }
 }

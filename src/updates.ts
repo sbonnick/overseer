@@ -12,10 +12,9 @@ export type UpdateStatus = {
 };
 
 export class UpdateChecker {
-  private static readonly updateGracePeriodMs = 5 * 60 * 1000;
   private docker: DockerClient;
   private cache = new Map<string, UpdateStatus>();
-  private updating = new Map<string, { expiresAt: number; imageRef: string }>();
+  private updatingContainers = new Set<string>();
   private checkIntervalMs: number;
   private timer?: ReturnType<typeof setInterval>;
   private lastCheckedAt?: string;
@@ -42,9 +41,7 @@ export class UpdateChecker {
     containerImageId?: string,
   ): UpdateStatus | undefined {
     const status = this.cache.get(imageRef);
-    const updating =
-      this.isUpdating(`image:${imageRef}`) ||
-      (containerId !== undefined && this.isUpdating(`container:${containerId}`));
+    const updating = containerId !== undefined && this.updatingContainers.has(containerId);
     if (!status) return undefined;
     const containerHasOlderImage = Boolean(
       containerImageId && status.localImageId && containerImageId !== status.localImageId,
@@ -57,23 +54,15 @@ export class UpdateChecker {
   }
 
   markUpdating(imageRef: string, containerId: string): void {
-    const update = { expiresAt: Date.now() + UpdateChecker.updateGracePeriodMs, imageRef };
-    this.updating.set(`image:${imageRef}`, update);
-    this.updating.set(`container:${containerId}`, update);
+    this.updatingContainers.add(containerId);
   }
 
   clearUpdating(imageRef: string): void {
-    for (const [key, update] of this.updating) {
-      if (update.imageRef === imageRef) this.updating.delete(key);
-    }
+    // Kept for backward compatibility, but updating is now tracked by container ID
   }
 
-  private isUpdating(key: string): boolean {
-    const update = this.updating.get(key);
-    if (!update) return false;
-    if (update.expiresAt > Date.now()) return true;
-    this.updating.delete(key);
-    return false;
+  clearUpdatingByContainerId(containerId: string): void {
+    this.updatingContainers.delete(containerId);
   }
 
   getLastCheckedAt(): string | undefined {
