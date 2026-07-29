@@ -23,28 +23,48 @@ async function updateService(encodedId: string, context: ServerContext): Promise
   if (context.state.dockerMutationActive) return mutationConflict();
 
   context.state.dockerMutationActive = true;
-  let deferredMutation = false;
-  let containerId: string | undefined;
   try {
-    containerId = decodeURIComponent(encodedId);
+    const containerId = decodeURIComponent(encodedId);
     const imageRef = await getUpdateImageRef(context.docker, containerId);
     context.updates.markUpdating(imageRef, containerId);
+    void runServiceUpdate(context, containerId, imageRef);
+    return json({ ok: true, action: "updating", containerId }, 202);
+  } catch (error) {
+    context.state.dockerMutationActive = false;
+    return json({ error: errorMessage(error, "Unknown error") }, 500);
+  }
+}
+
+async function runServiceUpdate(
+  context: ServerContext,
+  containerId: string,
+  imageRef: string,
+): Promise<void> {
+  let deferredMutation = false;
+  try {
     const result = await applyUpdate(context.docker, context.updates, containerId);
     const deferredId = result.retireContainerId ?? result.restartContainerId;
     if (deferredId) {
       deferredMutation = true;
-      scheduleSelfMutation(context, deferredId, Boolean(result.retireContainerId));
+      scheduleSelfMutation(context, deferredId, Boolean(result.retireContainerId), imageRef);
     }
-    return json(result);
   } catch (error) {
-    return json({ error: errorMessage(error, "Unknown error") }, 500);
+    context.updates.failUpdating(imageRef, error);
+    console.error(`[updates] failed to update ${imageRef}:`, error);
   } finally {
-    if (containerId) context.updates.clearUpdatingByContainerId(containerId);
-    if (!deferredMutation) context.state.dockerMutationActive = false;
+    if (!deferredMutation) {
+      context.updates.finishUpdating(imageRef);
+      context.state.dockerMutationActive = false;
+    }
   }
 }
 
-function scheduleSelfMutation(context: ServerContext, containerId: string, remove: boolean): void {
+function scheduleSelfMutation(
+  context: ServerContext,
+  containerId: string,
+  remove: boolean,
+  imageRef: string,
+): void {
   setTimeout(() => {
     const operation = remove
       ? context.docker.removeContainer(containerId, { force: true })
@@ -55,6 +75,7 @@ function scheduleSelfMutation(context: ServerContext, containerId: string, remov
         console.error(`[updates] failed to ${action} Overseer container:`, error);
       })
       .finally(() => {
+        context.updates.finishUpdating(imageRef);
         context.state.dockerMutationActive = false;
       });
   }, 250);

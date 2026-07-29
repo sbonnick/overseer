@@ -4,6 +4,7 @@ import { getLocalDigest, getRemoteDigest, hasUpdate, parseImageRef } from "./reg
 export type UpdateStatus = {
   hasUpdate: boolean;
   updating?: boolean;
+  updateError?: string;
   remoteDigest?: string;
   localDigest?: string;
   localImageId?: string;
@@ -14,7 +15,8 @@ export type UpdateStatus = {
 export class UpdateChecker {
   private docker: DockerClient;
   private cache = new Map<string, UpdateStatus>();
-  private updatingContainers = new Set<string>();
+  private updating = new Map<string, string>();
+  private updateErrors = new Map<string, string>();
   private checkIntervalMs: number;
   private timer?: ReturnType<typeof setInterval>;
   private lastCheckedAt?: string;
@@ -41,28 +43,41 @@ export class UpdateChecker {
     containerImageId?: string,
   ): UpdateStatus | undefined {
     const status = this.cache.get(imageRef);
-    const updating = containerId !== undefined && this.updatingContainers.has(containerId);
-    if (!status) return undefined;
+    const updating =
+      this.updating.has(imageRef) ||
+      (containerId !== undefined && this.updating.get(imageRef) === containerId);
+    const updateError = this.updateErrors.get(imageRef);
+    if (!status && !updating && !updateError) return undefined;
     const containerHasOlderImage = Boolean(
-      containerImageId && status.localImageId && containerImageId !== status.localImageId,
+      containerImageId && status?.localImageId && containerImageId !== status.localImageId,
     );
     return {
-      ...status,
-      hasUpdate: status.hasUpdate || containerHasOlderImage,
+      ...(status ?? { hasUpdate: false, checkedAt: new Date().toISOString() }),
+      hasUpdate: Boolean(status?.hasUpdate || containerHasOlderImage),
       ...(updating ? { updating: true } : {}),
+      ...(updateError ? { updateError } : {}),
     };
   }
 
-  markUpdating(_imageRef: string, containerId: string): void {
-    this.updatingContainers.add(containerId);
+  markUpdating(imageRef: string, containerId: string): void {
+    this.updateErrors.delete(imageRef);
+    this.updating.set(imageRef, containerId);
   }
 
-  clearUpdating(_imageRef: string): void {
-    // Kept for backward compatibility, but updating is now tracked by container ID
+  finishUpdating(imageRef: string): void {
+    this.updating.delete(imageRef);
   }
 
-  clearUpdatingByContainerId(containerId: string): void {
-    this.updatingContainers.delete(containerId);
+  failUpdating(imageRef: string, error: unknown): void {
+    this.updating.delete(imageRef);
+    this.updateErrors.set(
+      imageRef,
+      error instanceof Error ? error.message : "Unknown container update error",
+    );
+  }
+
+  hasActiveUpdate(): boolean {
+    return this.updating.size > 0;
   }
 
   getLastCheckedAt(): string | undefined {
@@ -112,10 +127,6 @@ export class UpdateChecker {
       this.cache.set(imageRef, status);
       if (updateRef && updateRef !== imageRef) {
         this.cache.set(updateRef, status);
-      }
-      if (!status.hasUpdate) {
-        this.clearUpdating(imageRef);
-        if (updateRef) this.clearUpdating(updateRef);
       }
       return status;
     } catch (error) {

@@ -1,5 +1,6 @@
 import type { ComposePathMapping } from "./compose-files.ts";
 import type { AppConfig } from "./config.ts";
+import type { ProjectInfo } from "./discovery.ts";
 import type { DockerClient } from "./docker.ts";
 import { handleComposeRequest } from "./server-compose.ts";
 import { errorMessage, json, staticResponse } from "./server-http.ts";
@@ -15,6 +16,7 @@ export type ServerContext = {
   state: {
     dockerMutationActive: boolean;
     composePathMappings?: Promise<ComposePathMapping[] | undefined>;
+    lastProjects?: ProjectInfo[];
   };
 };
 
@@ -54,6 +56,9 @@ async function healthResponse(context: ServerContext): Promise<Response> {
 }
 
 async function checkUpdatesResponse(context: ServerContext): Promise<Response> {
+  if (context.updates.hasActiveUpdate()) {
+    return json({ updatesCheckedAt: context.updates.getLastCheckedAt(), updating: true }, 202);
+  }
   try {
     await context.updates.checkAll();
     return json({ updatesCheckedAt: context.updates.getLastCheckedAt() });

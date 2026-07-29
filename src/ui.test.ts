@@ -38,6 +38,13 @@ describe("compose editor", () => {
     expect(page).toContain("Number(Boolean(a.isSelf)) - Number(Boolean(b.isSelf))");
   });
 
+  test("treats gateway interruptions as an in-progress update", () => {
+    expect(page).toContain("if (response.status !== 202) return data");
+    expect(page).toContain("return waitForServiceUpdate(service)");
+    expect(page).toContain('setStatus("Container update in progress", true)');
+    expect(page).toContain("if (hasActiveClientUpdates())");
+  });
+
   test("opens a container's mapped Compose configuration", () => {
     expect(page).toContain('class="btn-card-icon btn-edit-compose"');
     expect(page).toContain('if (!service.composeEditorFiles?.length) return ""');

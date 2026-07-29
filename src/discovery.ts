@@ -13,6 +13,7 @@ export type RouteInfo = {
 export type UpdateInfo = {
   hasUpdate: boolean;
   updating?: boolean;
+  updateError?: string;
   localImageId?: string;
   checkedAt?: string;
   error?: string;

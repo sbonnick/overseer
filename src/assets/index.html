@@ -402,6 +402,7 @@
       let showPorts = false;
       let showImage = false;
       let isRefreshing = false;
+      let serverUpdateActive = false;
       let isSaving = false;
       let openFileRequest = 0;
       let locateServiceRequest = 0;
@@ -453,9 +454,17 @@
       }
 
       function renderUpdateStatus() {
+        if (serverUpdateActive) {
+          setStatus("Container update in progress", true);
+          return;
+        }
         setStatus(updatesCheckedAt
           ? `Updates checked ${formatSince(updatesCheckedAt)}`
           : "Checking updates...", false);
+      }
+
+      function hasActiveClientUpdates() {
+        return serverUpdateActive || updatingServiceIds.size > 0 || bulkUpdateProjects.size > 0;
       }
 
       function formatSince(value) {
@@ -502,12 +511,20 @@
           const data = await readJson(response);
           if (!response.ok) throw new Error(data.error || "Request failed");
           if (data.updatesCheckedAt) updatesCheckedAt = data.updatesCheckedAt;
+          serverUpdateActive = Boolean(data.updating);
           renderUpdateStatus();
-          currentProjects = data.projects;
+          if (!data.stale || data.projects.length || !currentProjects.length) {
+            currentProjects = data.projects;
+          }
           render(currentProjects);
           pollTimer = setTimeout(refresh, data.pollIntervalMs || 5000);
           return true;
         } catch (error) {
+          if (hasActiveClientUpdates()) {
+            setStatus("Container update in progress", true);
+            pollTimer = setTimeout(refresh, 2000);
+            return false;
+          }
           setStatus("Docker unavailable", false);
           projectsEl.innerHTML = '<div class="error"><h2>Unable to load projects</h2><p class="subtle">'
             + escapeHtml(error.message) + '</p></div>';
@@ -515,7 +532,7 @@
           return false;
         } finally {
           isRefreshing = false;
-          statusEl.disabled = false;
+          statusEl.disabled = hasActiveClientUpdates();
         }
       }
 
@@ -539,6 +556,7 @@
       }
 
       function render(items) {
+        statusEl.disabled = isRefreshing || hasActiveClientUpdates();
         if (!items.length) {
           if (!projectsEl.querySelector(".empty")) {
             projectsEl.innerHTML = '<div class="empty"><h2>No compose projects detected</h2>'
@@ -1032,6 +1050,11 @@
           return renderCardFooter('<span class="update-badge">Updating image...</span>', service,
             renderUpdateButton(service, true, true));
         }
+        if (update.updateError) {
+          return renderCardFooter('<span class="subtle" style="font-size:12px" title="'
+            + escapeHtml(update.updateError) + '">Update failed</span>', service,
+            renderUpdateButton(service, bulkUpdating, false));
+        }
         if (update.error) {
           return renderCardFooter('<span class="subtle" style="font-size:12px" title="'
             + escapeHtml(update.error) + '">Update check failed</span>', service, "");
@@ -1139,34 +1162,56 @@
           }
           reconcileUpdatedService(service.id);
         } catch (error) {
-          let failure = error;
-          // Updating Overseer briefly disconnects the proxy before its replacement is ready.
-          if (service.isSelf && isTemporaryGatewayError(error)) {
-            if (await waitForOverseer()) {
-              reconcileUpdatedService(service.id);
-              return;
-            }
-            failure = new Error("Overseer did not become ready after updating");
-          }
           updatingServiceIds.delete(service.id);
           render(currentProjects);
           refresh();
-          alert(`Update failed for ${service.image}:\n${failure.message}`);
+          alert(`Update failed for ${service.image}:\n${error.message}`);
         }
       });
 
       async function updateService(service) {
-        const response = await fetch(`/api/services/${encodeURIComponent(service.id)}/update`, {
-          method: "POST",
-          signal: AbortSignal.timeout(5 * 60 * 1000)
-        });
-        const data = await readJson(response);
-        if (!response.ok) {
-          const error = new Error(data.error || "Update failed");
-          error.status = response.status;
-          throw error;
+        try {
+          const response = await fetch(`/api/services/${encodeURIComponent(service.id)}/update`, {
+            method: "POST",
+            signal: AbortSignal.timeout(30000)
+          });
+          const data = await readJson(response);
+          if (!response.ok) {
+            const error = new Error(data.error || "Update failed");
+            error.status = response.status;
+            throw error;
+          }
+          if (response.status !== 202) return data;
+        } catch (error) {
+          if (!isTemporaryGatewayError(error)) throw error;
         }
-        return data;
+        return waitForServiceUpdate(service);
+      }
+
+      async function waitForServiceUpdate(service) {
+        const startedAt = Date.now();
+        const deadline = startedAt + 30 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => { setTimeout(resolve, 1000); });
+          if (!await refreshWhenIdle()) continue;
+
+          const current = findCurrentService(service);
+          if (!current || current.update?.updating || !current.update) continue;
+          if (current.update.updateError) throw new Error(current.update.updateError);
+          if (!current.update.hasUpdate) return { ok: true, action: "updated", containerId: current.id };
+          if (Date.now() - startedAt < 10000) continue;
+          throw new Error("The container update did not complete");
+        }
+        const error = new Error("The container update is still in progress and could not be confirmed");
+        error.uncertain = true;
+        throw error;
+      }
+
+      function findCurrentService(service) {
+        const projectName = service.labels["com.docker.compose.project"];
+        const composeService = service.composeService || service.name;
+        return currentProjects.find((project) => project.name === projectName)?.services
+          .find((item) => (item.composeService || item.name) === composeService);
       }
 
       async function updateServiceWhenAvailable(service) {

@@ -10,30 +10,38 @@ import { isImageId, resolveUpdateImageRef } from "./updates.ts";
 
 export async function getProjectsResponse(context: ServerContext): Promise<Response> {
   try {
-    const containers = await safeDockerCall(context.docker.listContainers(), []);
-    const traefikRoutes = await safeDockerCall(discoverTraefikApiRoutes(containers), new Map());
+    const containers = await context.docker.listContainers();
+    const traefikRoutes = await discoverTraefikApiRoutes(containers);
     const projects = discoverProjects(containers, context.config.projectFilter, traefikRoutes);
     disableProxyRefresh(projects, containers, context);
-    await safeDockerCall(resolveServiceImageNames(context.docker, projects), undefined);
+    await resolveServiceImageNames(context.docker, projects);
     await attachAvailableComposeFiles(projects, containers, context);
     attachRuntimeState(projects, context);
-    return json({
-      projects,
-      updatedAt: new Date().toISOString(),
-      updatesCheckedAt: context.updates.getLastCheckedAt(),
-      pollIntervalMs: context.config.pollIntervalMs,
-    });
+    context.state.lastProjects = projects;
+    return projectsResponse(projects, context);
   } catch (error) {
+    if (context.updates.hasActiveUpdate()) {
+      const projects = context.state.lastProjects ?? [];
+      attachRuntimeState(projects, context);
+      return projectsResponse(projects, context, true);
+    }
     return json({ error: errorMessage(error, "Unknown Docker API error") }, 502);
   }
 }
 
-async function safeDockerCall<T>(promise: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await promise;
-  } catch {
-    return fallback;
-  }
+function projectsResponse(
+  projects: ProjectInfo[],
+  context: ServerContext,
+  stale = false,
+): Response {
+  return json({
+    projects,
+    updatedAt: new Date().toISOString(),
+    updatesCheckedAt: context.updates.getLastCheckedAt(),
+    pollIntervalMs: context.config.pollIntervalMs,
+    updating: context.updates.hasActiveUpdate(),
+    ...(stale ? { stale: true } : {}),
+  });
 }
 
 function disableProxyRefresh(
@@ -54,9 +62,10 @@ async function attachAvailableComposeFiles(
   containers: DockerContainer[],
   context: ServerContext,
 ): Promise<void> {
-  context.state.composePathMappings ??= safeDockerCall(
-    resolveComposePathMappings(context.docker, containers, context.config.composeFilesDir),
-    undefined,
+  context.state.composePathMappings ??= resolveComposePathMappings(
+    context.docker,
+    containers,
+    context.config.composeFilesDir,
   );
   const mappings = await context.state.composePathMappings;
   if (!mappings) {
@@ -85,11 +94,8 @@ async function resolveServiceImageNames(
   await Promise.all(
     services.map(async (service) => {
       try {
-        const imageInfo = await safeDockerCall(docker.inspectImage(service.image), undefined);
-        if (imageInfo) {
-          service.image =
-            resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
-        }
+        const imageInfo = await docker.inspectImage(service.image);
+        service.image = resolveReadableImageRef(service.image, imageInfo.RepoTags) ?? service.image;
       } catch {
         // Keep the Docker-provided image ID if it cannot be resolved to a repo tag.
       }
