@@ -12,6 +12,11 @@ export async function handleMutationRequest(
     return updateService(updateMatch[1] ?? "", context);
   }
 
+  const operationMatch = url.pathname.match(/^\/api\/update-operations\/([^/]+)$/);
+  if (operationMatch && request.method === "GET") {
+    return updateOperation(operationMatch[1] ?? "", context);
+  }
+
   const refreshMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/refresh$/);
   if (refreshMatch && request.method === "POST") {
     return refreshComposeProject(refreshMatch[1] ?? "", context);
@@ -26,9 +31,13 @@ async function updateService(encodedId: string, context: ServerContext): Promise
   try {
     const containerId = decodeURIComponent(encodedId);
     const imageRef = await getUpdateImageRef(context.docker, containerId);
+    const operationId = crypto.randomUUID();
+    const operations = (context.state.updateOperations ??= new Map());
+    if (operations.size >= 100) operations.delete(operations.keys().next().value ?? "");
+    operations.set(operationId, { status: "running" });
     context.updates.markUpdating(imageRef, containerId);
-    void runServiceUpdate(context, containerId, imageRef);
-    return json({ ok: true, action: "updating", containerId }, 202);
+    void runServiceUpdate(context, operationId, containerId, imageRef);
+    return json({ ok: true, action: "updating", containerId, operationId }, 202);
   } catch (error) {
     context.state.dockerMutationActive = false;
     return json({ error: errorMessage(error, "Unknown error") }, 500);
@@ -37,18 +46,24 @@ async function updateService(encodedId: string, context: ServerContext): Promise
 
 async function runServiceUpdate(
   context: ServerContext,
+  operationId: string,
   containerId: string,
   imageRef: string,
 ): Promise<void> {
   let deferredMutation = false;
   try {
     const result = await applyUpdate(context.docker, context.updates, containerId);
+    context.state.updateOperations?.set(operationId, { status: "succeeded", result });
     const deferredId = result.retireContainerId ?? result.restartContainerId;
     if (deferredId) {
       deferredMutation = true;
       scheduleSelfMutation(context, deferredId, Boolean(result.retireContainerId), imageRef);
     }
   } catch (error) {
+    context.state.updateOperations?.set(operationId, {
+      status: "failed",
+      error: errorMessage(error, "Unknown container update error"),
+    });
     context.updates.failUpdating(imageRef, error);
     console.error(`[updates] failed to update ${imageRef}:`, error);
   } finally {
@@ -57,6 +72,11 @@ async function runServiceUpdate(
       context.state.dockerMutationActive = false;
     }
   }
+}
+
+function updateOperation(encodedId: string, context: ServerContext): Response {
+  const operation = context.state.updateOperations?.get(decodeURIComponent(encodedId));
+  return operation ? json(operation) : json({ error: "Update operation not found" }, 404);
 }
 
 function scheduleSelfMutation(

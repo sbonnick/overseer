@@ -5,6 +5,7 @@ import type { DockerClient } from "./docker.ts";
 import { handleComposeRequest } from "./server-compose.ts";
 import { errorMessage, json, staticResponse } from "./server-http.ts";
 import { handleMutationRequest } from "./server-mutations.ts";
+import type { UpdateResult } from "./server-operations.ts";
 import { getProjectsResponse } from "./server-projects.ts";
 import { page } from "./ui.ts";
 import type { UpdateChecker } from "./updates.ts";
@@ -17,6 +18,14 @@ export type ServerContext = {
     dockerMutationActive: boolean;
     composePathMappings?: Promise<ComposePathMapping[] | undefined>;
     lastProjects?: ProjectInfo[];
+    updateOperations?: Map<
+      string,
+      {
+        status: "running" | "succeeded" | "failed";
+        result?: UpdateResult;
+        error?: string;
+      }
+    >;
   };
 };
 

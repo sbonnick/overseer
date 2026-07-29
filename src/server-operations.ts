@@ -3,7 +3,7 @@ import type { DockerConnection } from "./config.ts";
 import type { DockerClient, DockerContainer, DockerContainerInspect } from "./docker.ts";
 import type { UpdateChecker } from "./updates.ts";
 
-type UpdateResult = {
+export type UpdateResult = {
   ok: true;
   action: string;
   containerId: string;
