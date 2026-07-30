@@ -5,6 +5,32 @@ import type { ServerContext } from "./server-routes.ts";
 import { UpdateChecker } from "./updates.ts";
 
 describe("container updates", () => {
+  test("restarts a container", async () => {
+    let restartedId = "";
+    const restartContainer = async (id: string) => {
+      restartedId = id;
+    };
+    const docker = { restartContainer } as unknown as DockerClient;
+    const context = {
+      docker,
+      updates: new UpdateChecker(docker, 1000),
+      state: { dockerMutationActive: false },
+    } as ServerContext;
+    const request = new Request("http://localhost/api/services/container-1/restart", {
+      method: "POST",
+    });
+
+    const response = await handleMutationRequest(request, new URL(request.url), context);
+
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({
+      ok: true,
+      action: "restarted",
+      containerId: "container-1",
+    });
+    expect(restartedId).toBe("container-1");
+  });
+
   test("acknowledges before a long image pull completes", async () => {
     let releasePull: (() => void) | undefined;
     const pullBlocked = new Promise<void>((resolve) => {

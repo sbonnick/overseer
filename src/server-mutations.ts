@@ -12,6 +12,11 @@ export async function handleMutationRequest(
     return updateService(updateMatch[1] ?? "", context);
   }
 
+  const restartMatch = url.pathname.match(/^\/api\/services\/([^/]+)\/restart$/);
+  if (restartMatch && request.method === "POST") {
+    return restartService(restartMatch[1] ?? "", context);
+  }
+
   const operationMatch = url.pathname.match(/^\/api\/update-operations\/([^/]+)$/);
   if (operationMatch && request.method === "GET") {
     return updateOperation(operationMatch[1] ?? "", context);
@@ -42,6 +47,22 @@ async function updateService(encodedId: string, context: ServerContext): Promise
   } catch (error) {
     context.state.dockerMutationActive = false;
     return json({ error: errorMessage(error, "Unknown error") }, 500);
+  }
+}
+
+async function restartService(encodedId: string, context: ServerContext): Promise<Response> {
+  if (!encodedId) return json({ error: "Invalid container ID" }, 400);
+  if (context.state.dockerMutationActive) return mutationConflict();
+
+  context.state.dockerMutationActive = true;
+  try {
+    const containerId = decodeURIComponent(encodedId);
+    await context.docker.restartContainer(containerId);
+    return json({ ok: true, action: "restarted", containerId });
+  } catch (error) {
+    return json({ error: errorMessage(error, "Unable to restart container") }, 500);
+  } finally {
+    context.state.dockerMutationActive = false;
   }
 }
 

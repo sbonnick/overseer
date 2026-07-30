@@ -55,10 +55,14 @@ describe("compose editor", () => {
     expect(page).toContain("function revealComposeService(offset)");
   });
 
-  test("renders edit and update icons in the card footer", () => {
+  test("renders update, restart, and edit icons in the card footer", () => {
     expect(page).toContain('class="card-footer-actions"');
-    expect(page).toContain("updateButton + renderEditComposeButton(service)");
+    expect(page).toContain(
+      "updateButton + renderRestartButton(service) + renderEditComposeButton(service)",
+    );
     expect(page).toContain('class="btn-card-icon btn-update');
+    expect(page).toContain('class="btn-card-icon btn-restart');
+    expect(page).toContain("function restartService(service)");
     expect(page).toContain("aria-label=\"' + (updating ? 'Updating image for '");
     expect(page).toContain("updatingServiceIds.has(service.id)");
     expect(page).toContain("Pull image and recreate/restart only this container");

@@ -270,6 +270,7 @@
       .btn-update:hover:not(:disabled) { background: color-mix(in srgb, var(--accent), transparent 75%); }
       .btn-update:disabled { opacity: 0.5; cursor: default; }
       .btn-update.updating svg { animation: spin 0.8s linear infinite; }
+      .btn-restart.restarting svg { animation: spin 0.8s linear infinite; }
 
       .empty, .error {
         border: 1px solid var(--line); border-radius: 18px;
@@ -420,6 +421,7 @@
       let locateServiceRequest = 0;
       const bulkUpdateProjects = new Map();
       const updatingServiceIds = new Set();
+      const restartingServiceIds = new Set();
       let updatesCheckedAt = null;
       let tabMovesFocus = false;
       const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
@@ -476,7 +478,8 @@
       }
 
       function hasActiveClientUpdates() {
-        return serverUpdateActive || updatingServiceIds.size > 0 || bulkUpdateProjects.size > 0;
+        return serverUpdateActive || updatingServiceIds.size > 0 || restartingServiceIds.size > 0
+          || bulkUpdateProjects.size > 0;
       }
 
       function formatSince(value) {
@@ -1104,7 +1107,18 @@
 
       function renderCardFooter(status, service, updateButton) {
         return '<div class="card-footer">' + status + '<div class="card-footer-actions">'
-          + updateButton + renderEditComposeButton(service) + '</div></div>';
+          + updateButton + renderRestartButton(service) + renderEditComposeButton(service) + '</div></div>';
+      }
+
+      function renderRestartButton(service) {
+        const restarting = restartingServiceIds.has(service.id);
+        return '<button class="btn-card-icon btn-restart' + (restarting ? ' restarting' : '') + '" type="button"'
+          + (restarting ? '' : ` data-id="${escapeHtml(service.id)}"`)
+          + (restarting || bulkUpdateProjects.size ? ' disabled' : '')
+          + ' title="' + (restarting ? 'Restarting container' : 'Restart container') + '"'
+          + ' aria-label="' + (restarting ? 'Restarting ' : 'Restart ')
+            + escapeHtml(service.displayName || service.name) + '">'
+          + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg></button>';
       }
 
       function renderEditComposeButton(service) {
@@ -1181,6 +1195,35 @@
           return;
         }
 
+        const restartBtn = e.target.closest(".btn-restart");
+        if (restartBtn && !restartBtn.disabled && !bulkUpdateProjects.size) {
+          const service = currentProjects.flatMap((project) => project.services)
+            .find((item) => item.id === restartBtn.dataset.id);
+          if (!service) return;
+          if (!confirm(`Restart ${service.displayName || service.name}?`)) return;
+          if (pollTimer) clearTimeout(pollTimer);
+          restartingServiceIds.add(service.id);
+          render(currentProjects);
+          try {
+            await restartService(service);
+            if (service.isSelf && !await waitForOverseer()) {
+              throw new Error("Overseer did not become ready after restarting");
+            }
+            await refreshWhenIdle();
+          } catch (error) {
+            if (service.isSelf && isTemporaryGatewayError(error) && await waitForOverseer()) {
+              await refreshWhenIdle();
+            } else {
+              alert(`Restart failed for ${service.displayName || service.name}:\n${error.message}`);
+            }
+          } finally {
+            restartingServiceIds.delete(service.id);
+            render(currentProjects);
+            refresh();
+          }
+          return;
+        }
+
         const btn = e.target.closest(".btn-update");
         if (!btn || btn.disabled || bulkUpdateProjects.size) return;
         const service = currentProjects.flatMap((project) => project.services)
@@ -1223,6 +1266,20 @@
           if (!isTemporaryGatewayError(error)) throw error;
         }
         return waitForServiceUpdate(service);
+      }
+
+      async function restartService(service) {
+        const response = await fetch(`/api/services/${encodeURIComponent(service.id)}/restart`, {
+          method: "POST",
+          signal: AbortSignal.timeout(30000)
+        });
+        const data = await readJson(response);
+        if (!response.ok) {
+          const error = new Error(data.error || "Restart failed");
+          error.status = response.status;
+          throw error;
+        }
+        return data;
       }
 
       async function waitForUpdateOperation(operationId, service) {
