@@ -1,4 +1,6 @@
+import { Buffer } from "node:buffer";
 import type { DockerConnection } from "./config.ts";
+import { type DockerEngineAuth, getRegistryAuth, registryForImage } from "./registry-auth.ts";
 
 export type DockerContainer = {
   Id: string;
@@ -80,15 +82,21 @@ type RequestOptions = {
   method?: string;
   body?: string;
   text?: boolean;
+  headers?: Record<string, string>;
 };
 
 type DockerRequestInit = RequestInit & { unix?: string };
 
 export class DockerClient {
   readonly connection: DockerConnection;
+  private resolveRegistryAuth: (registry: string) => Promise<DockerEngineAuth | null>;
 
-  constructor(connection: DockerConnection) {
+  constructor(
+    connection: DockerConnection,
+    resolveRegistryAuth: (registry: string) => Promise<DockerEngineAuth | null> = getRegistryAuth,
+  ) {
     this.connection = connection;
+    this.resolveRegistryAuth = resolveRegistryAuth;
   }
 
   async listContainers(): Promise<DockerContainer[]> {
@@ -113,7 +121,14 @@ export class DockerClient {
     const params = new URLSearchParams({ fromImage });
     if (tag) params.set("tag", tag);
     if (digest) params.set("digest", digest);
-    await this.request<string>(`/images/create?${params}`, { method: "POST", text: true });
+    const auth = await this.resolveRegistryAuth(registryForImage(fromImage));
+    await this.request<string>(`/images/create?${params}`, {
+      method: "POST",
+      text: true,
+      ...(auth
+        ? { headers: { "x-registry-auth": Buffer.from(JSON.stringify(auth)).toString("base64") } }
+        : {}),
+    });
   }
 
   async stopContainer(id: string, timeoutSeconds?: number): Promise<void> {
@@ -173,7 +188,7 @@ export class DockerClient {
   }
 
   private buildInit(options: RequestOptions): DockerRequestInit {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...options.headers };
     if (options.body) {
       headers["content-type"] = "application/json";
     }

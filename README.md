@@ -49,6 +49,8 @@ All settings are via environment variables:
 | `UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | How often to check registries for image updates |
 | `COMPOSE_PROJECT` | — | Filter to a single compose project name |
 | `COMPOSE_FILES_DIR` | `~/project` | Directory searched recursively for Docker Compose YAML and JSON files editable in the UI |
+| `DOCKER_AUTH_CONFIG` | — | Docker `config.json` contents used for private-registry update checks and pulls |
+| `DOCKER_CONFIG` | `~/.docker` | Directory containing `config.json` when `DOCKER_AUTH_CONFIG` is unset |
 
 ## How it works
 
@@ -94,6 +96,37 @@ When the Update button is clicked, overseer:
 3. If the image ID is unchanged, it restarts the container as a fallback.
 
 The recreation preserves all Docker Compose labels, so the new container remains part of its project.
+
+### Private registries
+
+Overseer must receive the Docker credentials itself; credentials from `docker login` on the host are not automatically available inside the Overseer container. Provide a Docker `config.json` as a secret through `DOCKER_AUTH_CONFIG`, or mount its directory read-only and set `DOCKER_CONFIG`:
+
+```yaml
+services:
+  overseer:
+    environment:
+      DOCKER_CONFIG: /run/docker-config
+    volumes:
+      - /path/to/docker-config:/run/docker-config:ro
+```
+
+#### Reuse an existing Linux Docker login
+
+If `docker pull ghcr.io/OWNER/PRIVATE_IMAGE:TAG` works for your Linux user, mount that user's Docker config into Overseer:
+
+```yaml
+services:
+  overseer:
+    environment:
+      DOCKER_CONFIG: /docker-config
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/YOUR_LINUX_USER/.docker:/docker-config:ro
+```
+
+Replace `YOUR_LINUX_USER` with the user that can pull the private image. Verify that their `~/.docker/config.json` contains an `auths` entry for the registry (for example, `ghcr.io`). If the file uses `credsStore` or `credHelpers`, it depends on a credential-helper binary and host keychain that are not present in the Overseer container; instead provide a minimal static `config.json` with the registry's `auths` entry through `DOCKER_AUTH_CONFIG` or a read-only mount.
+
+For private GitHub Container Registry images, use a token with `read:packages`. Do not commit credentials or include them in compose files; use your deployment platform's secret mechanism for `DOCKER_AUTH_CONFIG` where possible.
 
 ## API
 
