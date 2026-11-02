@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
 import { DockerClient } from "./docker.ts";
 
 describe("DockerClient.pullImage", () => {
@@ -20,7 +21,13 @@ describe("DockerClient.pullImage", () => {
       expect(request?.url).toBe(
         "http://docker.example/images/create?fromImage=ghcr.io%2Fexample%2Fprivate-app&tag=1.2.3",
       );
-      expect(JSON.parse(atob(request?.headers.get("x-registry-auth") ?? ""))).toEqual({
+      const encodedAuth = request?.headers.get("x-registry-auth") ?? "";
+      expect(encodedAuth).toBe(
+        Buffer.from(
+          JSON.stringify({ auth: "dXNlcjp0b2tlbg==", serveraddress: "ghcr.io" }),
+        ).toString("base64url"),
+      );
+      expect(JSON.parse(Buffer.from(encodedAuth, "base64url").toString())).toEqual({
         auth: "dXNlcjp0b2tlbg==",
         serveraddress: "ghcr.io",
       });

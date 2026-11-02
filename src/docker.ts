@@ -126,7 +126,11 @@ export class DockerClient {
       method: "POST",
       text: true,
       ...(auth
-        ? { headers: { "x-registry-auth": Buffer.from(JSON.stringify(auth)).toString("base64") } }
+        ? {
+            headers: {
+              "x-registry-auth": Buffer.from(JSON.stringify(auth)).toString("base64url"),
+            },
+          }
         : {}),
     });
   }
