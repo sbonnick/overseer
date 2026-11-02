@@ -25,8 +25,12 @@ describe("DockerClient.pullImage", () => {
       expect(encodedAuth).toBe(
         Buffer.from(
           JSON.stringify({ username: "user", password: "token", serveraddress: "ghcr.io" }),
-        ).toString("base64url"),
+        )
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_"),
       );
+      expect(encodedAuth.endsWith("=")).toBe(true);
       expect(JSON.parse(Buffer.from(encodedAuth, "base64url").toString())).toEqual({
         username: "user",
         password: "token",

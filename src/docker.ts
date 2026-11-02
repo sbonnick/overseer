@@ -128,7 +128,7 @@ export class DockerClient {
       ...(auth
         ? {
             headers: {
-              "x-registry-auth": Buffer.from(JSON.stringify(auth)).toString("base64url"),
+              "x-registry-auth": encodeDockerAuth(auth),
             },
           }
         : {}),
@@ -261,4 +261,11 @@ function parsePullRef(ref: string): { fromImage: string; tag?: string; digest?: 
 
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function encodeDockerAuth(auth: DockerEngineAuth): string {
+  return Buffer.from(JSON.stringify(auth))
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
