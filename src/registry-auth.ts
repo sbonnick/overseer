@@ -46,7 +46,8 @@ export function resolveRegistryAuth(
 
   for (const alias of registryAliases(registry)) {
     const entry = auths[alias] ?? auths[stripProtocol(alias)];
-    if (entry && hasCredential(entry)) return { ...entry, serveraddress: registry };
+    const auth = entry ? toDockerEngineAuth(entry, registry) : null;
+    if (auth) return auth;
   }
 
   return null;
@@ -92,4 +93,19 @@ function stripProtocol(value: string): string {
 
 function hasCredential(entry: DockerAuthEntry): boolean {
   return Boolean(entry.auth || (entry.username && entry.password) || entry.identitytoken);
+}
+
+function toDockerEngineAuth(entry: DockerAuthEntry, registry: string): DockerEngineAuth | null {
+  if (!hasCredential(entry)) return null;
+  if (entry.auth) {
+    const decoded = Buffer.from(entry.auth, "base64").toString();
+    const separator = decoded.indexOf(":");
+    if (separator <= 0) return null;
+    return {
+      username: decoded.slice(0, separator),
+      password: decoded.slice(separator + 1),
+      serveraddress: registry,
+    };
+  }
+  return { ...entry, serveraddress: registry };
 }

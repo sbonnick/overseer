@@ -8,7 +8,7 @@ describe("registry credentials", () => {
       "ghcr.io",
     );
 
-    expect(auth).toEqual({ auth: "dXNlcjp0b2tlbg==", serveraddress: "ghcr.io" });
+    expect(auth).toEqual({ username: "user", password: "token", serveraddress: "ghcr.io" });
     expect(registryAuthorization(auth)).toBe("Basic dXNlcjp0b2tlbg==");
   });
 

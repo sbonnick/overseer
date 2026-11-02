@@ -14,7 +14,7 @@ describe("DockerClient.pullImage", () => {
     try {
       const client = new DockerClient(
         { kind: "http", baseUrl: "http://docker.example" },
-        async () => ({ auth: "dXNlcjp0b2tlbg==", serveraddress: "ghcr.io" }),
+        async () => ({ username: "user", password: "token", serveraddress: "ghcr.io" }),
       );
       await client.pullImage("ghcr.io/example/private-app:1.2.3");
 
@@ -24,11 +24,12 @@ describe("DockerClient.pullImage", () => {
       const encodedAuth = request?.headers.get("x-registry-auth") ?? "";
       expect(encodedAuth).toBe(
         Buffer.from(
-          JSON.stringify({ auth: "dXNlcjp0b2tlbg==", serveraddress: "ghcr.io" }),
+          JSON.stringify({ username: "user", password: "token", serveraddress: "ghcr.io" }),
         ).toString("base64url"),
       );
       expect(JSON.parse(Buffer.from(encodedAuth, "base64url").toString())).toEqual({
-        auth: "dXNlcjp0b2tlbg==",
+        username: "user",
+        password: "token",
         serveraddress: "ghcr.io",
       });
     } finally {
